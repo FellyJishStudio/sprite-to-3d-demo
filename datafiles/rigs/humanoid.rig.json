@@ -1,0 +1,606 @@
+{
+  "format": "throne-rig",
+  "version": 1,
+  "id": "humanoid",
+  "boneCount": 10,
+  "sequences": [
+    "anim_TPOSE",
+    "anim_attack",
+    "anim_chop",
+    "anim_chop_hard",
+    "anim_chop_heavy",
+    "anim_chop_old",
+    "anim_cook",
+    "anim_die",
+    "anim_eat",
+    "anim_fishing",
+    "anim_idle",
+    "anim_idle_1",
+    "anim_jump",
+    "anim_land",
+    "anim_mine",
+    "anim_pick",
+    "anim_plant",
+    "anim_ride",
+    "anim_ride_run",
+    "anim_ride_run_1",
+    "anim_run",
+    "anim_run_1",
+    "anim_sit",
+    "anim_sit_chair",
+    "anim_slash_combo",
+    "anim_stab",
+    "anim_stab_1",
+    "anim_walk"
+  ],
+  "facingRule": "humanoid",
+  "subImageRule": null,
+  "isoTilt": null,
+  "mount": null,
+  "defaultSkin": "clothed",
+  "skins": {
+    "skeleton": {
+      "bArmLeftUpper": {
+        "sprite": "spr_bone_limb",
+        "naturalLength": 11,
+        "pivot": [
+          0,
+          2
+        ],
+        "spriteFrames": 1
+      },
+      "bArmRightUpper": {
+        "sprite": "spr_bone_limb",
+        "naturalLength": 11,
+        "pivot": [
+          0,
+          2
+        ],
+        "spriteFrames": 1
+      },
+      "bBody": {
+        "sprite": "spr_bone_body",
+        "naturalLength": 16,
+        "pivot": [
+          8,
+          8
+        ],
+        "spriteFrames": 2
+      },
+      "bHead": {
+        "sprite": "spr_bone_head",
+        "naturalLength": 16,
+        "pivot": [
+          8,
+          8
+        ],
+        "spriteFrames": 2
+      },
+      "bLegLeftUpper": {
+        "sprite": "spr_bone_limb",
+        "naturalLength": 11,
+        "pivot": [
+          0,
+          2
+        ],
+        "spriteFrames": 1
+      },
+      "bLegRightUpper": {
+        "sprite": "spr_bone_limb",
+        "naturalLength": 11,
+        "pivot": [
+          0,
+          2
+        ],
+        "spriteFrames": 1
+      },
+      "bArmLeftLower": {
+        "sprite": "spr_bone_limb",
+        "naturalLength": 11,
+        "pivot": [
+          0,
+          2
+        ],
+        "spriteFrames": 1
+      },
+      "bArmRightLower": {
+        "sprite": "spr_bone_limb",
+        "naturalLength": 11,
+        "pivot": [
+          0,
+          2
+        ],
+        "spriteFrames": 1
+      },
+      "bLegLeftLower": {
+        "sprite": "spr_bone_limb",
+        "naturalLength": 11,
+        "pivot": [
+          0,
+          2
+        ],
+        "spriteFrames": 1
+      },
+      "bLegRightLower": {
+        "sprite": "spr_bone_limb",
+        "naturalLength": 11,
+        "pivot": [
+          0,
+          2
+        ],
+        "spriteFrames": 1
+      }
+    },
+    "clothed": {
+      "bArmLeftUpper": {
+        "sprite": "spr_bone_upper_arm",
+        "naturalLength": 11,
+        "pivot": [
+          0,
+          2
+        ],
+        "spriteFrames": 1
+      },
+      "bArmRightUpper": {
+        "sprite": "spr_bone_upper_arm",
+        "naturalLength": 11,
+        "pivot": [
+          0,
+          2
+        ],
+        "spriteFrames": 1
+      },
+      "bBody": {
+        "sprite": "spr_body",
+        "naturalLength": 16,
+        "pivot": [
+          8,
+          8
+        ],
+        "spriteFrames": 2
+      },
+      "bHead": {
+        "sprite": "spr_head_base",
+        "naturalLength": 16,
+        "pivot": [
+          8,
+          8
+        ],
+        "spriteFrames": 2
+      },
+      "bLegLeftUpper": {
+        "sprite": "spr_bone_upper_leg",
+        "naturalLength": 11,
+        "pivot": [
+          0,
+          3
+        ],
+        "spriteFrames": 1
+      },
+      "bLegRightUpper": {
+        "sprite": "spr_bone_upper_leg",
+        "naturalLength": 11,
+        "pivot": [
+          0,
+          3
+        ],
+        "spriteFrames": 1
+      },
+      "bArmLeftLower": {
+        "sprite": "spr_bone_hand",
+        "naturalLength": 11,
+        "pivot": [
+          0,
+          2
+        ],
+        "spriteFrames": 1
+      },
+      "bArmRightLower": {
+        "sprite": "spr_bone_hand",
+        "naturalLength": 11,
+        "pivot": [
+          0,
+          2
+        ],
+        "spriteFrames": 1
+      },
+      "bLegLeftLower": {
+        "sprite": "spr_bone_foot",
+        "naturalLength": 11,
+        "pivot": [
+          0,
+          2
+        ],
+        "spriteFrames": 1
+      },
+      "bLegRightLower": {
+        "sprite": "spr_bone_foot",
+        "naturalLength": 11,
+        "pivot": [
+          0,
+          2
+        ],
+        "spriteFrames": 1
+      }
+    },
+    "armoured": {
+      "bArmLeftUpper": {
+        "sprite": "spr_bone_upper_arm",
+        "naturalLength": 11,
+        "pivot": [
+          0,
+          2
+        ],
+        "spriteFrames": 1
+      },
+      "bArmRightUpper": {
+        "sprite": "spr_bone_upper_arm",
+        "naturalLength": 11,
+        "pivot": [
+          0,
+          2
+        ],
+        "spriteFrames": 1
+      },
+      "bBody": {
+        "sprite": "spr_body_light_armour",
+        "naturalLength": 16,
+        "pivot": [
+          8,
+          8
+        ],
+        "spriteFrames": 2
+      },
+      "bHead": {
+        "sprite": "spr_head_base",
+        "naturalLength": 16,
+        "pivot": [
+          8,
+          8
+        ],
+        "spriteFrames": 2
+      },
+      "bLegLeftUpper": {
+        "sprite": "spr_bone_upper_leg_armour",
+        "naturalLength": 25,
+        "pivot": [
+          6,
+          3
+        ],
+        "spriteFrames": 1
+      },
+      "bLegRightUpper": {
+        "sprite": "spr_bone_upper_leg_armour",
+        "naturalLength": 25,
+        "pivot": [
+          6,
+          3
+        ],
+        "spriteFrames": 1
+      },
+      "bArmLeftLower": {
+        "sprite": "spr_bone_hand",
+        "naturalLength": 11,
+        "pivot": [
+          0,
+          2
+        ],
+        "spriteFrames": 1
+      },
+      "bArmRightLower": {
+        "sprite": "spr_bone_hand",
+        "naturalLength": 11,
+        "pivot": [
+          0,
+          2
+        ],
+        "spriteFrames": 1
+      },
+      "bLegLeftLower": {
+        "sprite": "spr_bone_foot",
+        "naturalLength": 11,
+        "pivot": [
+          0,
+          2
+        ],
+        "spriteFrames": 1
+      },
+      "bLegRightLower": {
+        "sprite": "spr_bone_foot",
+        "naturalLength": 11,
+        "pivot": [
+          0,
+          2
+        ],
+        "spriteFrames": 1
+      }
+    }
+  },
+  "chains": [
+    {
+      "id": "armLeftUpper",
+      "bones": [
+        "bArmLeftUpper",
+        "bArmLeftLower"
+      ]
+    },
+    {
+      "id": "armRightUpper",
+      "bones": [
+        "bArmRightUpper",
+        "bArmRightLower"
+      ]
+    },
+    {
+      "id": "body",
+      "bones": [
+        "bBody"
+      ]
+    },
+    {
+      "id": "head",
+      "bones": [
+        "bHead"
+      ]
+    },
+    {
+      "id": "legLeftUpper",
+      "bones": [
+        "bLegLeftUpper",
+        "bLegLeftLower"
+      ]
+    },
+    {
+      "id": "legRightUpper",
+      "bones": [
+        "bLegRightUpper",
+        "bLegRightLower"
+      ]
+    }
+  ],
+  "chainConfig": {
+    "head": {
+      "posOffset": [
+        0,
+        3.5
+      ],
+      "armOffset": [
+        0,
+        0
+      ],
+      "scale": 0.85
+    },
+    "body": {
+      "posOffset": [
+        0,
+        0
+      ],
+      "armOffset": [
+        0,
+        0
+      ],
+      "scale": 1
+    },
+    "legLeftUpper": {
+      "posOffset": [
+        0,
+        0
+      ],
+      "armOffset": [
+        -2,
+        0
+      ],
+      "scale": 1
+    },
+    "legRightUpper": {
+      "posOffset": [
+        0,
+        0
+      ],
+      "armOffset": [
+        2,
+        0
+      ],
+      "scale": 1
+    },
+    "armLeftUpper": {
+      "posOffset": [
+        0,
+        1
+      ],
+      "armOffset": [
+        -4,
+        0
+      ],
+      "armOffsetXByFacing": {
+        "left": -4,
+        "rightDown": -5,
+        "rightUp": -3
+      },
+      "scale": 1
+    },
+    "armRightUpper": {
+      "posOffset": [
+        0,
+        1
+      ],
+      "armOffset": [
+        4,
+        0
+      ],
+      "scale": 1
+    }
+  },
+  "bones": [
+    {
+      "id": "bArmLeftUpper",
+      "name": "bone_arm_left_upper",
+      "parent": null,
+      "sprite": "spr_bone_limb",
+      "restPos": [
+        0,
+        8
+      ],
+      "restAngle": 0,
+      "naturalLength": 11,
+      "pivot": [
+        0,
+        2
+      ],
+      "spriteFrames": 1
+    },
+    {
+      "id": "bArmRightUpper",
+      "name": "bone_arm_right_upper",
+      "parent": null,
+      "sprite": "spr_bone_limb",
+      "restPos": [
+        11,
+        0
+      ],
+      "restAngle": -180,
+      "naturalLength": 11,
+      "pivot": [
+        0,
+        2
+      ],
+      "spriteFrames": 1
+    },
+    {
+      "id": "bBody",
+      "name": "bone_body",
+      "parent": null,
+      "sprite": "spr_bone_body",
+      "restPos": [
+        0,
+        15.5
+      ],
+      "restAngle": 0,
+      "naturalLength": 16,
+      "pivot": [
+        8,
+        8
+      ],
+      "spriteFrames": 2
+    },
+    {
+      "id": "bHead",
+      "name": "bone_head",
+      "parent": null,
+      "sprite": "spr_bone_head",
+      "restPos": [
+        -0.249999,
+        -1.750001
+      ],
+      "restAngle": 0,
+      "naturalLength": 16,
+      "pivot": [
+        8,
+        8
+      ],
+      "spriteFrames": 2
+    },
+    {
+      "id": "bLegLeftUpper",
+      "name": "bone_leg_left_upper",
+      "parent": null,
+      "sprite": "spr_bone_limb",
+      "restPos": [
+        0,
+        22
+      ],
+      "restAngle": -120,
+      "naturalLength": 11,
+      "pivot": [
+        0,
+        2
+      ],
+      "spriteFrames": 1
+    },
+    {
+      "id": "bLegRightUpper",
+      "name": "bone_leg_right_upper",
+      "parent": null,
+      "sprite": "spr_bone_limb",
+      "restPos": [
+        0,
+        22
+      ],
+      "restAngle": -60,
+      "naturalLength": 11,
+      "pivot": [
+        0,
+        2
+      ],
+      "spriteFrames": 1
+    },
+    {
+      "id": "bArmLeftLower",
+      "name": "bone_arm_left_lower",
+      "parent": "bArmLeftUpper",
+      "sprite": "spr_bone_limb",
+      "restPos": [
+        11,
+        0
+      ],
+      "restAngle": 0,
+      "naturalLength": 11,
+      "pivot": [
+        0,
+        2
+      ],
+      "spriteFrames": 1
+    },
+    {
+      "id": "bArmRightLower",
+      "name": "bone_arm_right_lower",
+      "parent": "bArmRightUpper",
+      "sprite": "spr_bone_limb",
+      "restPos": [
+        11,
+        -0.000001
+      ],
+      "restAngle": 0,
+      "naturalLength": 11,
+      "pivot": [
+        0,
+        2
+      ],
+      "spriteFrames": 1
+    },
+    {
+      "id": "bLegLeftLower",
+      "name": "bone_leg_left_lower",
+      "parent": "bLegLeftUpper",
+      "sprite": "spr_bone_limb",
+      "restPos": [
+        11,
+        0
+      ],
+      "restAngle": 0,
+      "naturalLength": 11,
+      "pivot": [
+        0,
+        2
+      ],
+      "spriteFrames": 1
+    },
+    {
+      "id": "bLegRightLower",
+      "name": "bone_leg_right_lower",
+      "parent": "bLegRightUpper",
+      "sprite": "spr_bone_limb",
+      "restPos": [
+        11,
+        0
+      ],
+      "restAngle": 0,
+      "naturalLength": 11,
+      "pivot": [
+        0,
+        2
+      ],
+      "spriteFrames": 1
+    }
+  ]
+}

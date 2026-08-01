@@ -1,0 +1,50 @@
+[
+  {
+    "id": "anim_idle",
+    "rig": "humanoid",
+    "sampleRate": 20,
+    "playback": "pingpong"
+  },
+  {
+    "id": "anim_walk",
+    "rig": "humanoid",
+    "sampleRate": 20,
+    "playback": "loop"
+  },
+  {
+    "id": "anim_run",
+    "rig": "humanoid",
+    "sampleRate": 20,
+    "playback": "loop"
+  },
+  {
+    "id": "anim_ride",
+    "rig": "humanoid",
+    "sampleRate": 20,
+    "playback": "pingpong"
+  },
+  {
+    "id": "anim_ride_run",
+    "rig": "humanoid",
+    "sampleRate": 20,
+    "playback": "loop"
+  },
+  {
+    "id": "sq_horse_idle_state",
+    "rig": "horse",
+    "sampleRate": 4,
+    "playback": "loop"
+  },
+  {
+    "id": "sq_horse_walk",
+    "rig": "horse",
+    "sampleRate": 4,
+    "playback": "loop"
+  },
+  {
+    "id": "sq_horse_run",
+    "rig": "horse",
+    "sampleRate": 4,
+    "playback": "loop"
+  }
+]

@@ -1,0 +1,10 @@
+rig       = global.rigs[$ "humanoid"];
+look      = look_random();
+sword_on  = true;
+clip      = rig.gait.idle;
+play      = 0;
+mount     = noone;
+direction = 270;
+target_x  = x;                // click destination -- the controller sets it
+target_y  = y;
+mv        = 0;                // current move speed, ramped toward walk or run

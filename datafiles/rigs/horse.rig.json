@@ -1,0 +1,561 @@
+{
+  "format": "throne-rig",
+  "version": 1,
+  "id": "horse",
+  "boneCount": 14,
+  "sequences": [
+    "sq_horse_die",
+    "sq_horse_hop",
+    "sq_horse_idle",
+    "sq_horse_idle_state",
+    "sq_horse_run",
+    "sq_horse_walk"
+  ],
+  "facingRule": "wide",
+  "subImageRule": {
+    "band": [
+      60,
+      120
+    ],
+    "steepBand": [
+      "bone_horse_body_left",
+      "bone_horse_body_middle",
+      "bone_horse_body_right",
+      "bone_horse_leg_back_left_up",
+      "bone_horse_leg_back_right_up"
+    ]
+  },
+  "isoTilt": {
+    "ampDown": 7,
+    "ampUp": 9,
+    "legAmp": 2,
+    "half": [
+      "bone_horse_body_middle"
+    ],
+    "flat": [
+      "bone_horse_tail"
+    ],
+    "front": [
+      "bone_horse_body_right",
+      "bone_horse_neck",
+      "bone_horse_head",
+      "bone_horse_leg_front_right_up",
+      "bone_horse_leg_front_right_down",
+      "bone_horse_leg_front_left_up",
+      "bone_horse_leg_front_left_down"
+    ],
+    "legs": [
+      "bone_horse_leg_front_right_up",
+      "bone_horse_leg_front_right_down",
+      "bone_horse_leg_front_left_up",
+      "bone_horse_leg_front_left_down",
+      "bone_horse_leg_back_right_up",
+      "bone_horse_leg_back_right_down",
+      "bone_horse_leg_back_left_up",
+      "bone_horse_leg_back_left_down"
+    ]
+  },
+  "mount": {
+    "seat": {
+      "dy": -19,
+      "followTilt": 0,
+      "squashFollow": true
+    },
+    "riderClips": {
+      "anim_ride": "sq_horse_idle_state",
+      "anim_ride_run": "sq_horse_walk"
+    },
+    "riderDepth": {
+      "nearArm": -35,
+      "nearLeg": -30,
+      "head": -20,
+      "body": 10,
+      "farArm": 35,
+      "farLeg": 30
+    }
+  },
+  "defaultSkin": null,
+  "skins": null,
+  "chains": [
+    {
+      "id": "horseBodyLeft",
+      "bones": [
+        "bHorseBodyLeft"
+      ]
+    },
+    {
+      "id": "horseBodyMiddle",
+      "bones": [
+        "bHorseBodyMiddle"
+      ]
+    },
+    {
+      "id": "horseBodyRight",
+      "bones": [
+        "bHorseBodyRight"
+      ]
+    },
+    {
+      "id": "horseLegBackLeftUp",
+      "bones": [
+        "bHorseLegBackLeftUp"
+      ]
+    },
+    {
+      "id": "horseLegBackRightUp",
+      "bones": [
+        "bHorseLegBackRightUp"
+      ]
+    },
+    {
+      "id": "horseLegFrontLeftUp",
+      "bones": [
+        "bHorseLegFrontLeftUp"
+      ]
+    },
+    {
+      "id": "horseLegFrontRightUp",
+      "bones": [
+        "bHorseLegFrontRightUp"
+      ]
+    },
+    {
+      "id": "horseNeck",
+      "bones": [
+        "bHorseNeck"
+      ]
+    },
+    {
+      "id": "horseTail",
+      "bones": [
+        "bHorseTail"
+      ]
+    },
+    {
+      "id": "horseHead",
+      "bones": [
+        "bHorseHead"
+      ]
+    },
+    {
+      "id": "horseLegBackLeftDown",
+      "bones": [
+        "bHorseLegBackLeftDown"
+      ]
+    },
+    {
+      "id": "horseLegBackRightDown",
+      "bones": [
+        "bHorseLegBackRightDown"
+      ]
+    },
+    {
+      "id": "horseLegFrontLeftDown",
+      "bones": [
+        "bHorseLegFrontLeftDown"
+      ]
+    },
+    {
+      "id": "horseLegFrontRightDown",
+      "bones": [
+        "bHorseLegFrontRightDown"
+      ]
+    }
+  ],
+  "chainConfig": {
+    "horseBodyLeft": {
+      "posOffset": [
+        0,
+        0
+      ],
+      "armOffset": [
+        0,
+        0
+      ],
+      "scale": 1
+    },
+    "horseBodyMiddle": {
+      "posOffset": [
+        0,
+        0
+      ],
+      "armOffset": [
+        0,
+        0
+      ],
+      "scale": 1
+    },
+    "horseBodyRight": {
+      "posOffset": [
+        0,
+        0
+      ],
+      "armOffset": [
+        0,
+        0
+      ],
+      "scale": 1
+    },
+    "horseLegBackLeftUp": {
+      "posOffset": [
+        0,
+        0
+      ],
+      "armOffset": [
+        -3,
+        0
+      ],
+      "scale": 1
+    },
+    "horseLegBackRightUp": {
+      "posOffset": [
+        0,
+        0
+      ],
+      "armOffset": [
+        3,
+        0
+      ],
+      "scale": 1
+    },
+    "horseLegFrontLeftUp": {
+      "posOffset": [
+        0,
+        0
+      ],
+      "armOffset": [
+        -3,
+        0
+      ],
+      "scale": 1
+    },
+    "horseLegFrontRightUp": {
+      "posOffset": [
+        0,
+        0
+      ],
+      "armOffset": [
+        3,
+        0
+      ],
+      "scale": 1
+    },
+    "horseNeck": {
+      "posOffset": [
+        0,
+        0
+      ],
+      "armOffset": [
+        0,
+        0
+      ],
+      "scale": 1
+    },
+    "horseTail": {
+      "posOffset": [
+        0,
+        0
+      ],
+      "armOffset": [
+        0,
+        0
+      ],
+      "scale": 1
+    },
+    "horseHead": {
+      "posOffset": [
+        0,
+        0
+      ],
+      "armOffset": [
+        0,
+        0
+      ],
+      "scale": 1
+    },
+    "horseLegBackLeftDown": {
+      "posOffset": [
+        0,
+        0
+      ],
+      "armOffset": [
+        -3,
+        0
+      ],
+      "scale": 1
+    },
+    "horseLegBackRightDown": {
+      "posOffset": [
+        0,
+        0
+      ],
+      "armOffset": [
+        3,
+        0
+      ],
+      "scale": 1
+    },
+    "horseLegFrontLeftDown": {
+      "posOffset": [
+        0,
+        0
+      ],
+      "armOffset": [
+        -3,
+        0
+      ],
+      "scale": 1
+    },
+    "horseLegFrontRightDown": {
+      "posOffset": [
+        0,
+        0
+      ],
+      "armOffset": [
+        3,
+        0
+      ],
+      "scale": 1
+    }
+  },
+  "bones": [
+    {
+      "id": "bHorseBodyLeft",
+      "name": "bone_horse_body_left",
+      "parent": null,
+      "sprite": "spr_horse_body_left",
+      "restPos": [
+        3.125,
+        -0.390625
+      ],
+      "restAngle": 0,
+      "naturalLength": 140,
+      "pivot": [
+        61,
+        99
+      ],
+      "spriteFrames": 2
+    },
+    {
+      "id": "bHorseBodyMiddle",
+      "name": "bone_horse_body_middle",
+      "parent": null,
+      "sprite": "spr_horse_body_middle",
+      "restPos": [
+        12.125,
+        0.609379
+      ],
+      "restAngle": 0,
+      "naturalLength": 140,
+      "pivot": [
+        70,
+        100
+      ],
+      "spriteFrames": 2
+    },
+    {
+      "id": "bHorseBodyRight",
+      "name": "bone_horse_body_right",
+      "parent": null,
+      "sprite": "spr_horse_body_right",
+      "restPos": [
+        0,
+        0
+      ],
+      "restAngle": 0,
+      "naturalLength": 140,
+      "pivot": [
+        81,
+        100
+      ],
+      "spriteFrames": 2
+    },
+    {
+      "id": "bHorseLegBackLeftUp",
+      "name": "bone_horse_leg_back_left_up",
+      "parent": "bHorseBodyLeft",
+      "sprite": "spr_horse_leg_left_up",
+      "restPos": [
+        0,
+        0
+      ],
+      "restAngle": 0,
+      "naturalLength": 140,
+      "pivot": [
+        53,
+        106
+      ],
+      "spriteFrames": 2
+    },
+    {
+      "id": "bHorseLegBackRightUp",
+      "name": "bone_horse_leg_back_right_up",
+      "parent": "bHorseBodyLeft",
+      "sprite": "spr_horse_leg_left_up",
+      "restPos": [
+        0,
+        0
+      ],
+      "restAngle": 0,
+      "naturalLength": 140,
+      "pivot": [
+        53,
+        106
+      ],
+      "spriteFrames": 2
+    },
+    {
+      "id": "bHorseLegFrontLeftUp",
+      "name": "bone_horse_leg_front_left_up",
+      "parent": "bHorseBodyRight",
+      "sprite": "spr_horse_leg_right_up",
+      "restPos": [
+        0,
+        0
+      ],
+      "restAngle": 0,
+      "naturalLength": 140,
+      "pivot": [
+        84,
+        110
+      ],
+      "spriteFrames": 1
+    },
+    {
+      "id": "bHorseLegFrontRightUp",
+      "name": "bone_horse_leg_front_right_up",
+      "parent": "bHorseBodyRight",
+      "sprite": "spr_horse_leg_right_up",
+      "restPos": [
+        0,
+        0
+      ],
+      "restAngle": 0,
+      "naturalLength": 140,
+      "pivot": [
+        84,
+        110
+      ],
+      "spriteFrames": 1
+    },
+    {
+      "id": "bHorseNeck",
+      "name": "bone_horse_neck",
+      "parent": "bHorseBodyRight",
+      "sprite": "spr_horse_neck",
+      "restPos": [
+        0,
+        0
+      ],
+      "restAngle": 0,
+      "naturalLength": 140,
+      "pivot": [
+        70,
+        85
+      ],
+      "spriteFrames": 1
+    },
+    {
+      "id": "bHorseTail",
+      "name": "bone_horse_tail",
+      "parent": "bHorseBodyLeft",
+      "sprite": "spr_horse_tail",
+      "restPos": [
+        0,
+        0
+      ],
+      "restAngle": 0,
+      "naturalLength": 140,
+      "pivot": [
+        51,
+        100
+      ],
+      "spriteFrames": 1
+    },
+    {
+      "id": "bHorseHead",
+      "name": "bone_horse_head",
+      "parent": "bHorseNeck",
+      "sprite": "spr_horse_head",
+      "restPos": [
+        0,
+        0
+      ],
+      "restAngle": 24.876022,
+      "naturalLength": 140,
+      "pivot": [
+        98,
+        111
+      ],
+      "spriteFrames": 2
+    },
+    {
+      "id": "bHorseLegBackLeftDown",
+      "name": "bone_horse_leg_back_left_down",
+      "parent": "bHorseLegBackLeftUp",
+      "sprite": "spr_horse_leg_left_down",
+      "restPos": [
+        0,
+        0
+      ],
+      "restAngle": 0,
+      "naturalLength": 140,
+      "pivot": [
+        52,
+        117
+      ],
+      "spriteFrames": 1
+    },
+    {
+      "id": "bHorseLegBackRightDown",
+      "name": "bone_horse_leg_back_right_down",
+      "parent": "bHorseLegBackRightUp",
+      "sprite": "spr_horse_leg_left_down",
+      "restPos": [
+        0,
+        0
+      ],
+      "restAngle": 0,
+      "naturalLength": 140,
+      "pivot": [
+        52,
+        117
+      ],
+      "spriteFrames": 1
+    },
+    {
+      "id": "bHorseLegFrontLeftDown",
+      "name": "bone_horse_leg_front_left_down",
+      "parent": "bHorseLegFrontLeftUp",
+      "sprite": "spr_horse_leg_right_down",
+      "restPos": [
+        0,
+        0
+      ],
+      "restAngle": 0,
+      "naturalLength": 140,
+      "pivot": [
+        83,
+        122
+      ],
+      "spriteFrames": 1
+    },
+    {
+      "id": "bHorseLegFrontRightDown",
+      "name": "bone_horse_leg_front_right_down",
+      "parent": "bHorseLegFrontRightUp",
+      "sprite": "spr_horse_leg_right_down",
+      "restPos": [
+        0,
+        0
+      ],
+      "restAngle": 0,
+      "naturalLength": 140,
+      "pivot": [
+        83,
+        122
+      ],
+      "spriteFrames": 1
+    }
+  ]
+}

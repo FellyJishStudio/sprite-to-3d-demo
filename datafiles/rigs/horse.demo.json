@@ -1,0 +1,140 @@
+{
+  "_comment": [
+    "pose.js computeHorseDepths(). The horse does NOT use one depth for the whole body: it",
+    "splits into a near half and a far half from the isometrically tilted leg Y, so the near",
+    "half draws over the far half as it turns.  base 'front' = y_adjust*100, base 'back' =",
+    "facing_down ? 100 : 0.  'leg' adds 3 to whichever leg of a pair is furthest from camera,",
+    "which is what stops the two z-fighting.  Head, neck and tail are the only parts that",
+    "rearrange on facing_down -- hence the differing down/up values.",
+    "tint is empty: the horse has no appearance slots, so every bone falls through to plain.",
+    "",
+    "iso: two corrections to what the rig records, both verified against obj_horse/Step_0.gml.",
+    "  flat  - bones that do NOT take the extra -1 when facing_down. The tail is drawn at a",
+    "          plain y in BOTH branches (:803, :845); pose.js gives it -1 when facing down.",
+    "          body_middle is the reverse case and is handled by the renderer: it takes the",
+    "          -1 as well as its half tilt (:812 `y - 1 - 0.5*y_adjust`), which pose.js omits.",
+    "  legAmp - the rig records 2 because obj_horse computes `y_adjust_leg = 2*dsin(...)` at",
+    "          :702, but that local is never read again. It is dead code in the game, so the",
+    "          legs get no extra tilt and pose.js applying one is a divergence.",
+    "",
+    "shadow: obj_horse/Step_0.gml:963-969 pins two spr_player_shadow instances to the DRAWN",
+    "  body halves, +25 in y; scale and alpha from obj_horse/Draw_0.gml:10-12.",
+    "",
+    "gait: obj_horse/Step_0.gml:634-636 idles on sq_horse_idle_state, not sq_horse_idle.",
+    "  offset, not direction-dependent. obj_camera/Step_0.gml:59 uses the same -19. (A cow",
+    "mount: moved OUT of this file and into horse.rig.json, alongside isoTilt -- it is rig data the editor edits and saves, not a demo-local tweak."
+  ],
+  "depth": {
+    "horseBodyLeft": {
+      "base": "back",
+      "down": 4,
+      "up": 4
+    },
+    "horseBodyMiddle": {
+      "base": "front",
+      "down": 4,
+      "up": 4
+    },
+    "horseBodyRight": {
+      "base": "front",
+      "down": 3,
+      "up": 3
+    },
+    "horseLegBackLeftUp": {
+      "base": "back",
+      "down": 3,
+      "up": 3,
+      "leg": "left"
+    },
+    "horseLegBackLeftDown": {
+      "base": "back",
+      "down": 3,
+      "up": 3,
+      "leg": "left"
+    },
+    "horseLegBackRightUp": {
+      "base": "back",
+      "down": 3,
+      "up": 3,
+      "leg": "right"
+    },
+    "horseLegBackRightDown": {
+      "base": "back",
+      "down": 3,
+      "up": 3,
+      "leg": "right"
+    },
+    "horseLegFrontLeftUp": {
+      "base": "front",
+      "down": 2,
+      "up": 2,
+      "leg": "left"
+    },
+    "horseLegFrontLeftDown": {
+      "base": "front",
+      "down": 5,
+      "up": 5,
+      "leg": "left"
+    },
+    "horseLegFrontRightUp": {
+      "base": "front",
+      "down": 2,
+      "up": 2,
+      "leg": "right"
+    },
+    "horseLegFrontRightDown": {
+      "base": "front",
+      "down": 2,
+      "up": 2,
+      "leg": "right"
+    },
+    "horseHead": {
+      "base": "front",
+      "down": 3,
+      "up": 6
+    },
+    "horseNeck": {
+      "base": "front",
+      "down": 4,
+      "up": 7
+    },
+    "horseTail": {
+      "base": "back",
+      "down": 8,
+      "up": 0
+    }
+  },
+  "side": {},
+  "tint": {},
+  "iso": {
+    "flat": [
+      "bone_horse_tail"
+    ],
+    "legAmp": 0
+  },
+  "shadow": [
+    {
+      "chain": "horseBodyLeft",
+      "dy": 25,
+      "sub": 2,
+      "sx": 2.47,
+      "sy": 2.21,
+      "alpha": 0.28
+    },
+    {
+      "chain": "horseBodyRight",
+      "dy": 25,
+      "sub": 2,
+      "sx": 2.47,
+      "sy": 2.21,
+      "alpha": 0.28
+    }
+  ],
+  "anchor": {},
+  "attach": [],
+  "gait": {
+    "idle": "sq_horse_idle_state",
+    "walk": "sq_horse_walk",
+    "run": "sq_horse_run"
+  }
+}

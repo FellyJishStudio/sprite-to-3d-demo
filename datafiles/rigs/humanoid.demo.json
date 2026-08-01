@@ -1,0 +1,115 @@
+{
+  "_comment": [
+    "The per-rig tables pose.js keeps in code rather than in the rig file.",
+    "Kept beside humanoid.rig.json so that file stays a verbatim copy of pipeline output.",
+    "depth: pose.js computeDepths(). d = (down|up) + mirror*X + dirDep*P*X, see scr_anim_depth.",
+    "  head = 3*!facing_down | body = 1 | arms = -/+8*X | legs = 1 + -/+P*X - !facing_down",
+    "  frontOfHead: facing left pulls the sword arm in front of the head (pose.js:403-404).",
+    "side: which limb a chain belongs to, so a rider can drop the one the horse hides.",
+    "tint: per BONE, from scr_player_avatar.gml:249-260 --",
+    "  body(shirt) head(skin) arm(shirt, skin) leg(pants, pants). The hands are bare skin;",
+    "  appearance.js boneTint() returned shirt for every /arm/ bone, which was wrong.",
+    "  The head takes headSkin, NOT skin: spr_bone_hand is pure white so a plain multiply by",
+    "  the skin colour yields the skin colour, but spr_head_base is already painted in",
+    "  HEAD_SRC[0] = 251,175,93, so it needs the compensating multiplier look_head_tint()",
+    "  gives. Sharing one slot renders the hand white on the default skin.",
+    "shadow: obj_shadow is a spr_player_shadow instance sitting at the owner's own x/y.",
+    "gait: which clip each movement state plays, so no GML names a clip.",
+    "anchor: the chains hair/face/sword hang off.",
+    "attach: head extras. depth is relative to the anchor chain -- pose.js D.HAIR_FRONT is",
+    "  -10 and D.FACE is -1. sprite names a field on the look struct, not an asset.",
+    "role: which mount.riderDepth offset each chain takes when this rig is riding something. The offsets themselves live on the MOUNT's rig (horse.rig.json `mount`), not here, so the editor can tune them and both the demo and the game pick them up."
+  ],
+  "depth": {
+    "head": {
+      "down": 0,
+      "up": 3
+    },
+    "body": {
+      "down": 1,
+      "up": 1
+    },
+    "armLeftUpper": {
+      "mirror": -8
+    },
+    "armRightUpper": {
+      "mirror": 8,
+      "frontOfHead": -12
+    },
+    "legLeftUpper": {
+      "down": 1,
+      "up": 0,
+      "dirDep": 1
+    },
+    "legRightUpper": {
+      "down": 1,
+      "up": 0,
+      "dirDep": -1
+    }
+  },
+  "side": {
+    "armLeftUpper": "left",
+    "armRightUpper": "right",
+    "legLeftUpper": "left",
+    "legRightUpper": "right"
+  },
+  "tint": {
+    "bHead": "headSkin",
+    "bBody": "shirt",
+    "bArmLeftUpper": "shirt",
+    "bArmRightUpper": "shirt",
+    "bArmLeftLower": "skin",
+    "bArmRightLower": "skin",
+    "bLegLeftUpper": "pants",
+    "bLegRightUpper": "pants",
+    "bLegLeftLower": "pants",
+    "bLegRightLower": "pants"
+  },
+  "shadow": [
+    {
+      "chain": null,
+      "dy": 0,
+      "sub": 2,
+      "sx": 1,
+      "sy": 1,
+      "alpha": 0.4
+    }
+  ],
+  "anchor": {
+    "head": "head",
+    "weapon": "armRightUpper"
+  },
+  "attach": [
+    {
+      "slot": "hair",
+      "sprite": "hair_spr",
+      "chain": "head",
+      "depth": -10,
+      "sub": "back",
+      "onlyFacingDown": false
+    },
+    {
+      "slot": "face",
+      "sprite": "face_spr",
+      "chain": "head",
+      "depth": -1,
+      "sub": 0,
+      "onlyFacingDown": true
+    }
+  ],
+  "gait": {
+    "idle": "anim_idle",
+    "walk": "anim_walk",
+    "run": "anim_run",
+    "rideIdle": "anim_ride",
+    "rideRun": "anim_ride_run"
+  },
+  "role": {
+    "armLeftUpper": "arm",
+    "armRightUpper": "arm",
+    "legLeftUpper": "leg",
+    "legRightUpper": "leg",
+    "head": "head",
+    "body": "body"
+  }
+}

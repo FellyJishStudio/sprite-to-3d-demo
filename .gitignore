@@ -1,0 +1,13 @@
+# GameMaker build output
+output/
+*.win
+*.zip
+
+# GameMaker local/user state
+*.resource_order.bak
+.gm_cache/
+temp/
+
+# Editor/OS noise
+.DS_Store
+Thumbs.db
