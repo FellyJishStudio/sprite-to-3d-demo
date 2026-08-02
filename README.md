@@ -263,7 +263,7 @@ source project, not the 5 this demo ships.
 | `Space` | draw / sheathe the sword |
 | `R` | shuffle the character's look |
 | `[wave]` button | wave the right hand — a **Z-axis** animation: the hand sweeps side to side facing the camera, mirrors facing away, and collapses to nothing in profile, because z projects into screen x through `-sin(direction)` exactly as x projects through `cos(direction)`. Spin while waving to see it. |
-| `L` | place a **light** at the cursor (two exist at boot, six max). Every character in range casts a projected shadow of its *animated pose* — each bone part re-emitted black, sheared away from the light by `height / (lightHeight − height)`. The isometric 1:2 ground cancels out of the shear itself (doubling ground-y then halving screen-y is a no-op) and shows up in the attenuation metric and the 2:1 glow pools. Stateless, recomputed per frame. |
+| `L` | place a **light** at the cursor (two exist at boot, six max). Every character in range casts a shadow of its *animated pose*: the shadow is a second `anim_build` pass whose joints are laid onto the ground (`joint + k·height` away from the light, `k = groundDist/lightHeight`) **before** the bones aim at each other — so the same point-at-next-joint stretch that keeps the standing figure connected keeps its shadow connected and correctly elongated. The isometric 1:2 ground supplies the direction and the metric (a light reaches twice as far along x as along screen-y); glow pools are 2:1 ellipses. Stateless, recomputed per frame. |
 | right-click a horse | ride menu, then click **Ride** / **Dismount** |
 | hold left on a horse | the same menu, for anyone without a right button (0.4 s) |
 | `[+10] [+50] [-10] [reset]` | spawn or remove skeletons |

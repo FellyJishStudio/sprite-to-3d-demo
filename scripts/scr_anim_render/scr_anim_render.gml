@@ -141,7 +141,7 @@ function anim_mount_state(_rig, _dir) {
 /// Appends to `_parts` rather than drawing, so a mount and its rider can share one sorted
 /// list. Positions are absolute.
 function anim_build(_parts, _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
-                    _mount = undefined) {
+                    _mount = undefined, _shadow = undefined) {
     var _f    = anim_facing(_rig, _dir, _is_player);
     var _dcos = _f.dcos, _zsin = _f.zsin, _mir = _f.mirror, _down = _f.down;
     var _dat  = _clip.data;
@@ -255,19 +255,28 @@ function anim_build(_parts, _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
             var _col = _cols[_m.tintIdx];       // per BONE: the hands are skin, not sleeve
             if (_col == undefined) continue;
             var _r = _at + _rows[_m.slot];
+            // X foreshortened by cos(direction), z swept in by -sin of the same angle.
+            // The armature SCALE reaches the sprite only, never the joint position --
+            // multiplying the position by it drags the part toward the origin, which
+            // once sank the head into the torso.
+            var _px = _x + _dat[_r + ANIM_X] * _dcos + _dat[_r + ANIM_Z] * _zsin + _ox;
+            var _py = _y + _dat[_r + ANIM_Y] + _oy
+                    + ((_iso == undefined) ? 0 : anim_iso(_m.iso_cls, _m.iso_flat, _iso_y, _down));
+            var _pang = _dat[_r + ANIM_ANGLE] * _dcos;
+            if (_shadow != undefined) {
+                var _ph = _shadow.gy - _py;
+                _px += _shadow.kx * _ph;
+                _py  = _shadow.gy + _shadow.ky * _ph;
+                _pang = _shadow.lay;               // no next joint: lie along the shadow
+            }
             _start[c] = array_length(_parts);   // pin recorded: the push below is certain
             array_push(_parts,
                 _depth,
                 _m.sprite,
                 anim_sub(_m, _steep, _back),
-                // X foreshortened by cos(direction), z swept in by -sin of the same angle.
-                // The armature SCALE reaches the sprite only, never the joint position --
-                // multiplying the position by it drags the part toward the origin, which
-                // once sank the head into the torso.
-                _x + _dat[_r + ANIM_X] * _dcos + _dat[_r + ANIM_Z] * _zsin + _ox,
-                _y + _dat[_r + ANIM_Y] + _oy
-                    + ((_iso == undefined) ? 0 : anim_iso(_m.iso_cls, _m.iso_flat, _iso_y, _down)),
-                _dat[_r + ANIM_ANGLE] * _dcos,
+                _px,
+                _py,
+                _pang,
                 _dat[_r + ANIM_XSCALE] * _mir * _scale,
                 _dat[_r + ANIM_YSCALE] * _scale,
                 _col,
@@ -303,6 +312,21 @@ function anim_build(_parts, _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
         var _ln = _bs[_n - 1].len;
         var _ex = _jx[_n - 1] + _ln * _dcos * dcos(_la) + (_zj - _zpen) * _zsin;
         var _ey = _jy[_n - 1] - _ln * dsin(_la);
+
+        // Shadow pass: lay every joint (and the tip) onto the ground BEFORE the bones aim
+        // at each other, so the same stretch that connects the standing figure connects
+        // its shadow. Shearing the finished sprites instead scatters them -- the anchors
+        // spread apart but the sprites stay bone-sized, and the silhouette tears.
+        if (_shadow != undefined) {
+            for (var i = 0; i < _n; i++) {
+                var _jh = _shadow.gy - _jy[i];
+                _jx[i] += _shadow.kx * _jh;
+                _jy[i]  = _shadow.gy + _shadow.ky * _jh;
+            }
+            var _th = _shadow.gy - _ey;
+            _ex += _shadow.kx * _th;
+            _ey  = _shadow.gy + _shadow.ky * _th;
+        }
 
         if (c == _rig.armChain) {          // the chain a held item hangs off
             _has_tip  = true;
@@ -370,7 +394,8 @@ function anim_build(_parts, _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
     // Ground shadows. The client pins the horse's pair to the DRAWN body halves, +25 in y
     // (obj_horse/Step_0.gml:963-969), and gives a humanoid an obj_shadow at its own x/y. A
     // huge depth just puts them at the back of this character's own paint order.
-    var _shade = _look[$ "shadow"];
+    // A cast-shadow pass emits none: a shadow does not cast a contact blob.
+    var _shade = (_shadow != undefined) ? undefined : _look[$ "shadow"];
     if (_shade != undefined) {
         var _spec = _rig.shadow;
         for (var i = 0; i < array_length(_spec); i++) {
@@ -455,49 +480,48 @@ function anim_paint(_parts) {
     }
 }
 
-/// Append cast-shadow copies of a built character to its own parts list, one set per
-/// in-range light. The shadow is the ANIMATED pose, not a blob: every bone part is
-/// re-emitted black at its planar projection onto the ground, so the silhouette waves,
-/// walks and rides exactly as the character does, one shear per light.
+/// One light's shear, for a character standing at (_gx, _gy) -- or undefined when the
+/// light does not reach it. A shadow is NOT a displaced copy of the finished parts: that
+/// scatters bone-sized sprites along a line and the figure tears apart. It is a second
+/// anim_build pass whose JOINTS are laid onto the ground first, so the point-at-next-joint
+/// stretch then draws connected, correctly elongated bones between them -- the same
+/// mechanic that keeps the standing character connected keeps its shadow connected.
 ///
-/// The projection is the textbook point-light one. A part at height h above the ground
-/// anchor (_gx, _gy) lands at
+///     joint (jx, jy) at height h = gy - jy   ->   (jx + kx*h, gy + ky*h)
 ///
-///     offset = (part - light) * h / (lightHeight - h)
-///
-/// and the ISOMETRIC 1:2 GROUND cancels out of that offset entirely: converting a screen
-/// delta to ground space doubles y, projecting scales it, converting back halves it
-/// again. So the sheared positions use screen deltas directly -- where the 1:2 world DOES
-/// appear is the attenuation metric (a light reaches twice as far along x as along
-/// screen-y, so ground distance doubles dy) and the 2:1 glow pools the controller draws.
-///
-/// Stateless: recomputed from the parts list every frame, nothing cached, nothing keyed.
-function anim_cast_shadows(_parts, _gx, _gy) {
-    var _lights = global.demo_lights;
-    var _nl = array_length(_lights);
-    if (_nl == 0) return;
-    var _count = array_length(_parts);      // snapshot: shadows must not shadow shadows
-    for (var l = 0; l < _nl; l++) {
-        var _L  = _lights[l];
-        var _dy = (_gy - _L.y) * 2;                        // iso 1:2: true ground distance
-        var _gd = sqrt(sqr(_gx - _L.x) + sqr(_dy));
-        if (_gd > _L.r) continue;
-        var _a = 0.38 * (1 - _gd / _L.r);                  // fade toward the light's edge
-        for (var i = 0; i < _count; i += PART.SIZE) {
-            if (_parts[i + PART.DEPTH] >= 900000) continue;     // contact blobs cast nothing
-            var _h = _gy - _parts[i + PART.Y];                  // height above the ground
-            if (_h <= 1) continue;
-            // Clamped so a part near the light's own height cannot shoot to infinity.
-            var _f = _h / max(_L.h - _h, 18);
-            array_push(_parts,
-                999500 - l,                                // on the ground, over the blob
-                _parts[i + PART.SPR], _parts[i + PART.SUB],
-                _parts[i + PART.X] + (_parts[i + PART.X] - _L.x) * _f,
-                _gy + (_gy - _L.y) * _f,
-                _parts[i + PART.ANG],
-                _parts[i + PART.XS], _parts[i + PART.YS],
-                c_black, _a * _parts[i + PART.ALPHA]);
-        }
+/// (kx, ky) is the unit ground direction away from the light times h*groundDist/lightHeight
+/// -- a linear slope, so the figure stays in one piece and lengthens smoothly with
+/// distance. The ISOMETRIC 1:2 ground supplies both the direction and the metric: ground
+/// deltas double screen-y going in and halve coming back, so a light reaches twice as far
+/// along x as along screen-y and the shadow of a ring of characters is a true circle on
+/// the iso ground. Stateless: recomputed every frame.
+function anim_light_shadow(_L, _gx, _gy) {
+    var _dgx = _gx - _L.x;
+    var _dgy = (_gy - _L.y) * 2;                     // screen y -> iso ground y
+    var _gd  = sqrt(_dgx * _dgx + _dgy * _dgy);
+    if (_gd > _L.r || _gd < 1) return undefined;
+    var _s  = min(_gd / _L.h, 2.2);                  // shadow length per pixel of height
+    var _kx = (_dgx / _gd) * _s;
+    var _ky = (_dgy / _gd) * 0.5 * _s;               // ground y -> screen y
+    return {
+        kx    : _kx,
+        ky    : _ky,
+        gy    : _gy,
+        alpha : 0.38 * (1 - _gd / _L.r),             // fade toward the light's edge
+        // Single bones (body, head) have no next joint to stretch toward; they lie down
+        // along the shadow line instead. -90 maps the sprite's up-axis onto (kx, ky).
+        lay   : point_direction(0, 0, _kx, _ky) - 90
+    };
+}
+
+/// Recolour a freshly built shadow range: one flat depth per light (on the ground, in
+/// front of the contact blob, behind every body part), silhouette black, faded alpha.
+function anim_shadow_tint(_parts, _first, _alpha, _depth) {
+    var _n = array_length(_parts);
+    for (var i = _first; i < _n; i += PART.SIZE) {
+        _parts[i + PART.DEPTH] = _depth;
+        _parts[i + PART.COL]   = c_black;
+        _parts[i + PART.ALPHA] *= _alpha;
     }
 }
 
@@ -511,9 +535,16 @@ function anim_scratch() {
     return _s;
 }
 
-/// Draw one character on its own.
+/// Draw one character on its own, plus one cast shadow per light that reaches it.
 function anim_draw(_rig, _clip, _play, _x, _y, _dir, _look, _is_player) {
     var _p = anim_build(anim_scratch(), _rig, _clip, _play, _x, _y, _dir, _look, _is_player);
-    anim_cast_shadows(_p, _x, _y);
+    var _nl = array_length(global.demo_lights);
+    for (var l = 0; l < _nl; l++) {
+        var _s = anim_light_shadow(global.demo_lights[l], _x, _y);
+        if (_s == undefined) continue;
+        var _first = array_length(_p);
+        anim_build(_p, _rig, _clip, _play, _x, _y, _dir, _look, _is_player, undefined, _s);
+        anim_shadow_tint(_p, _first, _s.alpha, 999500 - l);
+    }
     anim_paint(_p);
 }
