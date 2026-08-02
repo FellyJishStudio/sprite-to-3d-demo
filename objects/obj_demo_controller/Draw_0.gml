@@ -44,44 +44,55 @@ gpu_set_blendmode(bm_normal);
 // stamp instead of stacking. Scratch, not a cache: remade when lost or when the zoom
 // resizes the view, cleared and restamped every frame.
 if (global.anim_ready) {
+    var _nl = array_length(global.demo_lights);
     var _sw = round(camera_get_view_width(_cam)), _sh = round(camera_get_view_height(_cam));
-    if (!surface_exists(shadow_surf) || surface_get_width(shadow_surf) != _sw
-                                     || surface_get_height(shadow_surf) != _sh) {
-        if (surface_exists(shadow_surf)) surface_free(shadow_surf);
-        shadow_surf = surface_create(_sw, _sh);
+    for (var l = 0; l < _nl; l++) {
+        // One surface per light, so each pool can fade OTHER lights' shadows crossing it
+        // without touching its own -- a character inside a pool blocks that pool's light,
+        // and its shadow there must stay strong, anchored at the feet.
+        if (l >= array_length(shadow_surfs)) shadow_surfs[l] = -1;
+        if (!surface_exists(shadow_surfs[l]) || surface_get_width(shadow_surfs[l]) != _sw
+                                             || surface_get_height(shadow_surfs[l]) != _sh) {
+            if (surface_exists(shadow_surfs[l])) surface_free(shadow_surfs[l]);
+            shadow_surfs[l] = surface_create(_sw, _sh);
+        }
+        surface_set_target(shadow_surfs[l]);
+        draw_clear_alpha(c_black, 0);
+        camera_apply(_cam);    // world coordinates land on the surface as they do on screen
+        var _L = global.demo_lights[l];
+        var _pw = instance_find(obj_demo_player, 0);
+        if (_pw != noone && _pw.mount == noone) {
+            anim_shadow_char(_L, _pw.rig, _pw.clip, _pw.play, _pw.x, _pw.y, _pw.direction, _pw.look, true);
+        }
+        with (obj_demo_skeleton) anim_shadow_char(_L, rig, clip, play, x, y, direction, look, false);
+        with (obj_demo_horse)    anim_shadow_pair(_L, self);
+        // Fade by every OTHER pool's bright core, never this light's own.
+        gpu_set_blendmode(bm_subtract);
+        for (var j = 0; j < _nl; j++) {
+            if (j == l) continue;
+            var _L2 = global.demo_lights[j];
+            var _fw = _L2.r * 0.55;
+            draw_ellipse_colour(_L2.x - _fw, _L2.y - _fw * 0.5,
+                                _L2.x + _fw, _L2.y + _fw * 0.5,
+                                make_colour_rgb(90, 90, 90), c_black, false);
+        }
+        gpu_set_blendmode(bm_normal);
+        surface_reset_target();
     }
-    surface_set_target(shadow_surf);
-    draw_clear_alpha(c_black, 0);
-    camera_apply(_cam);        // world coordinates land on the surface as they do on screen
-    var _pw = instance_find(obj_demo_player, 0);
-    if (_pw != noone && _pw.mount == noone) {
-        anim_shadow_char(_pw.rig, _pw.clip, _pw.play, _pw.x, _pw.y, _pw.direction, _pw.look, true);
-    }
-    with (obj_demo_skeleton) anim_shadow_char(rig, clip, play, x, y, direction, look, false);
-    with (obj_demo_horse)    anim_shadow_pair(self);
-    // A silhouette lying across a light pool fades where that pool shines: subtract each
-    // pool's bright core (about half the attenuation reach) from the stamped greys.
-    gpu_set_blendmode(bm_subtract);
-    for (var i = 0; i < array_length(global.demo_lights); i++) {
-        var _L2 = global.demo_lights[i];
-        var _fw = _L2.r * 0.55;
-        draw_ellipse_colour(_L2.x - _fw, _L2.y - _fw * 0.5,
-                            _L2.x + _fw, _L2.y + _fw * 0.5,
-                            make_colour_rgb(90, 90, 90), c_black, false);
-    }
-    gpu_set_blendmode(bm_normal);
-    surface_reset_target();
-    // Composite four times at 1px diagonal offsets, quarter strength each: the interior
-    // (where all four overlap) reaches full darkness, every edge gets a graduated
-    // penumbra. The soft edge is what stops the silhouette reading as the rectangles the
-    // sprites are actually made of -- a hard-edged stamp shows every art corner as a
-    // block, worst when a toward-camera shadow compresses the figure.
+    // Composite each light's shadows four times at 1px diagonal offsets, quarter strength
+    // each: full darkness where all four overlap, a graduated penumbra at every edge. The
+    // soft edge is what stops the silhouette reading as the rectangles the sprites are
+    // actually made of. Two lights' shadows crossing double-darken, which is physical:
+    // that ground is losing both lights.
     gpu_set_blendmode(bm_subtract);
     var _sc = make_colour_rgb(35, 35, 35);
-    draw_surface_ext(shadow_surf, _x0 - 1, _y0 - 1, 1, 1, 0, _sc, 1);
-    draw_surface_ext(shadow_surf, _x0 + 1, _y0 - 1, 1, 1, 0, _sc, 1);
-    draw_surface_ext(shadow_surf, _x0 - 1, _y0 + 1, 1, 1, 0, _sc, 1);
-    draw_surface_ext(shadow_surf, _x0 + 1, _y0 + 1, 1, 1, 0, _sc, 1);
+    for (var l = 0; l < _nl; l++) {
+        if (l >= array_length(shadow_surfs) || !surface_exists(shadow_surfs[l])) continue;
+        draw_surface_ext(shadow_surfs[l], _x0 - 1, _y0 - 1, 1, 1, 0, _sc, 1);
+        draw_surface_ext(shadow_surfs[l], _x0 + 1, _y0 - 1, 1, 1, 0, _sc, 1);
+        draw_surface_ext(shadow_surfs[l], _x0 - 1, _y0 + 1, 1, 1, 0, _sc, 1);
+        draw_surface_ext(shadow_surfs[l], _x0 + 1, _y0 + 1, 1, 1, 0, _sc, 1);
+    }
     gpu_set_blendmode(bm_normal);
 }
 

@@ -641,23 +641,23 @@ function anim_light_sheen(_parts, _gx, _gy) {
 /// working -- that, plus the parts being opaque on the surface, is what makes the shadow
 /// UNIFORM: overlapping parts (hair over torso over arm) all write the same grey instead
 /// of stacking translucent layers into blotches.
-function anim_shadow_char(_rig, _clip, _play, _x, _y, _dir, _look, _is_player) {
-    var _nl = array_length(global.demo_lights);
-    if (_nl == 0) return;
-    // ONE ordinary build serves every light: the shear happens per quad in
-    // anim_shadow_paint, not in the pose.
+/// Stamp one character's silhouette for ONE light into that light's active surface.
+/// Shadows are kept per light so a pool can fade OTHER lights' shadows crossing it
+/// without erasing its own -- a character standing inside a pool blocks that pool's
+/// light, and its shadow there must stay strong (a shared surface made it float
+/// detached, the near half eaten by its own caster's fade).
+function anim_shadow_char(_L, _rig, _clip, _play, _x, _y, _dir, _look, _is_player) {
+    var _s = anim_light_shadow(_L, _x, _y);
+    if (_s == undefined) return;
     var _p = anim_build(anim_scratch(), _rig, _clip, _play, _x, _y, _dir, _look, _is_player);
-    for (var l = 0; l < _nl; l++) {
-        var _s = anim_light_shadow(global.demo_lights[l], _x, _y);
-        if (_s != undefined) anim_shadow_paint(_p, _s);
-    }
+    anim_shadow_paint(_p, _s);
 }
 
 /// The mount-and-rider version: both shear against the mount's ground anchor and light,
 /// so the pair stamps as one silhouette.
-function anim_shadow_pair(_h) {
-    var _nl = array_length(global.demo_lights);
-    if (_nl == 0) return;
+function anim_shadow_pair(_L, _h) {
+    var _s = anim_light_shadow(_L, _h.x, _h.y);
+    if (_s == undefined) return;
     var _p = anim_scratch();
     if (_h.rider != noone) {
         var _r = _h.rider;
@@ -665,10 +665,7 @@ function anim_shadow_pair(_h) {
                    anim_mount_state(_h.rig, _h.direction));
     }
     anim_build(_p, _h.rig, _h.clip, _h.play, _h.x, _h.y, _h.direction, _h.look, false);
-    for (var l = 0; l < _nl; l++) {
-        var _s = anim_light_shadow(global.demo_lights[l], _h.x, _h.y);
-        if (_s != undefined) anim_shadow_paint(_p, _s);
-    }
+    anim_shadow_paint(_p, _s);
 }
 
 /// The shared parts list, emptied and handed out. One character (or one mount + rider
