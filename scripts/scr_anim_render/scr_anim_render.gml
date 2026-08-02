@@ -485,17 +485,27 @@ function anim_light_shadow(_L, _gx, _gy) {
     var _gd  = sqrt(_dgx * _dgx + _dgy * _dgy);
     if (_gd > _L.r || _gd < 1) return undefined;
     var _s  = min(_gd / _L.h, 2.2);                  // shadow length per pixel of height
+    // ky gets a constant camera-ward tilt on top of the directional term: the 1:2
+    // ground's own inclination showing up in the projection.
+    var _kx = (_dgx / _gd) * _s;
+    var _ky = (_dgy / _gd) * 0.5 * _s + 0.3;
+    var _kl = sqrt(_kx * _kx + _ky * _ky);           // never 0: the tilt guarantees it
     return {
-        kx   : (_dgx / _gd) * _s,
-        // ground y -> screen y, PLUS a constant camera-ward tilt. The tilt is the 1:2
-        // ground's own inclination showing up in the projection, and it is what keeps a
-        // side-lit figure figure-shaped: with the light due east or west the directional
-        // term is ~0 and a pure shear would collapse the whole character onto a one-pixel
-        // line (a paper cutout lit edge-on -- mathematically right, visually wrong).
-        // Being a constant, it is continuous through every light angle: no pop as the
-        // shadow swings past horizontal.
-        ky   : (_dgy / _gd) * 0.5 * _s + 0.3,
+        kx   : _kx,
+        ky   : _ky,
+        gx   : _gx,
         gy   : _gy,
+        // Where a part's LATERAL offset (its distance east of the character's axis) goes
+        // in the shadow. Keeping it on the x axis works only while the shadow runs
+        // north-south; once the shadow swings east-west the width lies parallel to the
+        // axis, folds into the length, and the figure collapses to a stick however much
+        // the axis is tilted. This direction -- (|ay|, -ax) of the unit shadow axis --
+        // IS east-west for north/south shadows (so those keep their approved look,
+        // sword east casting east) and turns vertical for east-west shadows, laying the
+        // figure on its side with its true width across the axis. It is continuous at
+        // every angle and never vanishes, and the whole map stays affine: no gaps.
+        uwx  : abs(_ky) / _kl,
+        uwy  : -_kx / _kl,
         // Brightness stamped into the shadow surface: full at the light, 0 at its edge.
         a255 : round(255 * (1 - _gd / _L.r))
         // There is deliberately NO lateral mirror at any light angle. The rig is a
@@ -520,7 +530,8 @@ function anim_light_shadow(_L, _gx, _gy) {
 /// diagonal one (the horse's neck). Colour comes from the fog the caller set.
 function anim_shadow_paint(_parts, _s) {
     var _count = array_length(_parts);
-    var _kx = _s.kx, _ky = _s.ky, _gy = _s.gy;
+    var _kx = _s.kx, _ky = _s.ky, _gx = _s.gx, _gy = _s.gy;
+    var _uwx = _s.uwx, _uwy = _s.uwy;
     for (var i = 0; i < _count; i += PART.SIZE) {
         if (_parts[i + PART.DEPTH] >= 900000) continue;      // contact blobs cast nothing
         var _al = _parts[i + PART.ALPHA];
@@ -546,14 +557,20 @@ function anim_shadow_paint(_parts, _s) {
         var _x2 = _px + _u1 * _ca + _v0 * _sa,  _y2 = _py - _u1 * _sa + _v0 * _ca;
         var _x3 = _px + _u1 * _ca + _v1 * _sa,  _y3 = _py - _u1 * _sa + _v1 * _ca;
         var _x4 = _px + _u0 * _ca + _v1 * _sa,  _y4 = _py - _u0 * _sa + _v1 * _ca;
+        // Corner -> shadow: lateral offset u rides the width direction (uwx, uwy),
+        // height h rides the shear (kx, ky). See anim_light_shadow for both.
+        var _w1 = _x1 - _gx, _h1 = _gy - _y1;
+        var _w2 = _x2 - _gx, _h2 = _gy - _y2;
+        var _w3 = _x3 - _gx, _h3 = _gy - _y3;
+        var _w4 = _x4 - _gx, _h4 = _gy - _y4;
         draw_primitive_begin_texture(pr_trianglestrip, sprite_get_texture(_spr, _sub));
-        draw_vertex_texture_colour(_x1 + _kx * (_gy - _y1), _gy + _ky * (_gy - _y1),
+        draw_vertex_texture_colour(_gx + _w1 * _uwx + _kx * _h1, _gy + _w1 * _uwy + _ky * _h1,
                                    _uv[0], _uv[1], c_white, _al);
-        draw_vertex_texture_colour(_x2 + _kx * (_gy - _y2), _gy + _ky * (_gy - _y2),
+        draw_vertex_texture_colour(_gx + _w2 * _uwx + _kx * _h2, _gy + _w2 * _uwy + _ky * _h2,
                                    _uv[2], _uv[1], c_white, _al);
-        draw_vertex_texture_colour(_x4 + _kx * (_gy - _y4), _gy + _ky * (_gy - _y4),
+        draw_vertex_texture_colour(_gx + _w4 * _uwx + _kx * _h4, _gy + _w4 * _uwy + _ky * _h4,
                                    _uv[0], _uv[3], c_white, _al);
-        draw_vertex_texture_colour(_x3 + _kx * (_gy - _y3), _gy + _ky * (_gy - _y3),
+        draw_vertex_texture_colour(_gx + _w3 * _uwx + _kx * _h3, _gy + _w3 * _uwy + _ky * _h3,
                                    _uv[2], _uv[3], c_white, _al);
         draw_primitive_end();
     }
