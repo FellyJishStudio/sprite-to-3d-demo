@@ -6,8 +6,6 @@
 /// depth cannot sit both in front of and behind another. Merging the two characters into a
 /// single depth-sorted list reproduces it exactly: the rider's parts resolve against THIS
 /// rig's two bases, using the offsets in its own `mount` block.
-if (!anim_on_screen(x, y)) exit;
-
 var _parts = anim_scratch();
 
 if (rider != noone) {

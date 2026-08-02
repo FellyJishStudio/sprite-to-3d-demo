@@ -18,16 +18,11 @@
 /// per-part allocation is the only thing in here that costs measurable time.
 enum PART { DEPTH, SPR, SUB, X, Y, ANG, XS, YS, COL, ALPHA, SIZE }
 
-/// Cheap early-out: an off-camera character does no pose and no draw work at all
-/// (node_armature/Draw_0.gml:2-12 does the same thing first). anim_draw calls this itself.
-function anim_on_screen(_x, _y) {
-    var _c = view_camera[0];
-    if (_c < 0) return true;
-    var _pad = 140;
-    var _vx = camera_get_view_x(_c), _vy = camera_get_view_y(_c);
-    return (_x > _vx - _pad && _x < _vx + camera_get_view_width(_c)  + _pad
-         && _y > _vy - _pad && _y < _vy + camera_get_view_height(_c) + _pad);
-}
+/// There is deliberately NO off-camera culling here. The game has one
+/// (node_armature/Draw_0.gml:2-12); this demo dropped it so the fps readout measures what
+/// the animation actually costs -- a cull makes the number a function of where the camera
+/// happens to be pointing, which reads as "fps rises when I zoom in" and says nothing
+/// about capacity. Every instance pays full pose-and-paint cost every frame.
 
 /// Every facing-derived quantity.
 ///
@@ -454,8 +449,7 @@ function anim_scratch() {
     return _s;
 }
 
-/// Draw one character on its own. Off-camera characters do no work at all.
+/// Draw one character on its own.
 function anim_draw(_rig, _clip, _play, _x, _y, _dir, _look, _is_player) {
-    if (!anim_on_screen(_x, _y)) return;
     anim_paint(anim_build(anim_scratch(), _rig, _clip, _play, _x, _y, _dir, _look, _is_player));
 }

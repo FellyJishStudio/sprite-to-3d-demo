@@ -202,9 +202,10 @@ they are what a per-engine adapter should be ported from.
 | `obj_demo_horse` | wanders; when ridden, takes the rider's heading. |
 | `obj_demo_skeleton` | flees the player. Same clothed humanoid rig and the same clips, tinted grey — no new art. Deliberately dumb: no pathfinding, so the frame-rate readout measures animation and nothing else. |
 
-Every object's Draw event is a single `anim_draw` call and the off-camera cull lives inside
-it — except the horse's, which builds itself and any rider into one list (`anim_build`) and
-paints that (`anim_paint`).
+Every object's Draw event is a single `anim_draw` call — except the horse's, which builds
+itself and any rider into one list (`anim_build`) and paints that (`anim_paint`). There is
+deliberately **no off-camera culling**: every instance pays full pose-and-paint cost every
+frame, so the fps readout measures capacity rather than where the camera is pointing.
 
 ### 4.3 The data
 
@@ -279,28 +280,24 @@ the framing the real game plays at.
 
 ## 6. Measured performance
 
-VM runtime, `fps_real` averaged over 2.5 s per step, room 2560×1440, camera 640×360.
-"Characters" counts skeletons plus the player and horse; every one is a full 10–14 part
-humanoid or 14-part horse recomputed from scratch each frame.
+VM runtime, `fps_real`, room 2560×1440, camera 640×360. "Characters" counts skeletons plus
+the player and horse; every one is a full 10–14 part humanoid or 14-part horse recomputed
+from scratch each frame, with **no culling** — the number does not depend on the camera.
 
-| characters | shipped (off-camera culling on) | culling forced off — every instance drawn |
-|---:|---:|---:|
-| 12 | 931 | 335 |
-| 102 | 290 | 44 |
-| 202 | 156 | 24 |
-| 502 | 62 | not reliably captured |
+The current reference point: **~7.7 `fps_real` at 802 characters**, i.e. ~0.16 ms per
+character per frame. Before the scratch-reuse and load-time-index pass the same scene
+measured 3.8 (~0.33 ms per character), so cost is linear in characters drawn and the 60 fps
+budget lands at roughly a hundred of them on this machine's VM build.
 
-So it holds a solid 60 fps at 500 characters as shipped, and to roughly 80 drawn at once
-with culling disabled. Cost is linear in parts drawn.
-
-Profiling (`anim_draw` stubbed at three points) puts **~87 % of the cost in building the
-transform** and ~13 % in sorting and `draw_sprite_ext`. Per-character cost tracks almost
-exactly the number of **GML VM runtime-function dispatches** — `point_direction`,
-`point_distance`, `lengthdir_*`, `dcos`/`dsin`, `array_create`, `array_push` — at roughly
-0.8 µs each. What got it there, all of it stateless: a struct per part replaced with a flat
-number array, the payload copied into a GML array instead of `buffer_peek`, `array_sort`
-with a comparator callback replaced by an inline insertion sort, and every name resolved to
-an integer at load time.
+Profiling (`anim_draw` stubbed at three points, measured before that pass) put **~87 % of
+the cost in building the transform** and ~13 % in sorting and `draw_sprite_ext`.
+Per-character cost tracks almost exactly the number of **GML VM runtime-function
+dispatches** — `point_direction`, `point_distance`, `lengthdir_*`, `dcos`/`dsin` — at
+roughly 0.8 µs each. What got it there, all of it stateless: a struct per part replaced
+with a flat number array, the payload copied into a GML array instead of `buffer_peek`,
+`array_sort` with a comparator callback replaced by an inline insertion sort, every name
+resolved to an integer at load time, and every per-frame allocation replaced with a reused
+scratch workspace.
 
 **YYC was not measured.** Igor refuses it here (`The platform 'windows' requires the 'uf'
 argument…`, and `PackageZip` fails earlier with a permission error). Since the remaining

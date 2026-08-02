@@ -1,7 +1,8 @@
 /// Ground lattice: isometric diamonds, 2 wide to 1 tall, matching the projection the rig is
 /// drawn with. Two families of parallel lines, slope +/-0.5, so a diamond is TILE*2 x TILE.
 /// Drawn in world space at depth 20000, behind every character, and bounded to the camera
-/// rect rather than the whole room -- the same discipline as anim_on_screen().
+/// rect rather than the whole room -- an infinite lattice needs no more than the view.
+/// (The characters themselves are NOT culled; see the note atop scr_anim_render.)
 #macro GRID_TILE 32
 
 var _cam = view_camera[0];
