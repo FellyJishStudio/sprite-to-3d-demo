@@ -483,16 +483,6 @@ function anim_paint(_parts) {
 /// deltas double screen-y going in and halve coming back, so a light reaches twice as far
 /// along x as along screen-y and the shadow of a ring of characters is a true circle on
 /// the iso ground. Stateless: recomputed every frame.
-/// Sign-preserving magnitude floor for the shadow width's across-axis component: the
-/// minimum cross-thickness a side-lit figure keeps instead of collapsing to a stick.
-/// The sign flip through zero is the one unavoidable seam (topology: the width must be
-/// east at both the north and south poles), parked at exactly east-west where the flip
-/// is a subtle vertical swap of an already-horizontal silhouette.
-function uw_floor(_c) {
-    static _m = 0.55;
-    return (_c >= 0) ? max(_c, _m) : min(_c, -_m);
-}
-
 function anim_light_shadow(_L, _gx, _gy) {
     var _dgx = _gx - _L.x;
     var _dgy = (_gy - _L.y) * 2;                     // screen y -> iso ground y
@@ -502,29 +492,30 @@ function anim_light_shadow(_L, _gx, _gy) {
     // stacked height) into a screen-crossing wedge that read as a smear, not a figure.
     var _s  = min(_gd / _L.h, 1.6);                  // shadow length per pixel of height
     // The shear is the PURE iso away-direction: unit ground vector away from the light,
-    // times s, with ground-y halved back onto the screen. No extra tilt -- an earlier
-    // +0.3 camera-ward bias (a thickness hack) dragged every shadow steeply toward the
-    // camera and broke the 1:2 direction; thickness is uw_floor's job now.
+    // times s, with ground-y halved back onto the screen -- with ONE exception: |ky| is
+    // floored at 0.35, sign preserved. At near-horizontal shear the projection
+    // degenerates onto a single line, and a wide pose's lateral spread separates parts
+    // ALONG that line -- the shadow fragmented into dashes. The floor keeps enough
+    // vertical spread for the figure to stay connected and shaped. Diagonal and
+    // north/south shadows are untouched (their |ky| already clears it); this is NOT the
+    // old constant +0.3 bias, which bent every direction toward the camera.
     var _kx = (_dgx / _gd) * _s;
     var _ky = (_dgy / _gd) * 0.5 * _s;
+    if (abs(_ky) < 0.35) _ky = (_ky < 0) ? -0.35 : 0.35;
     var _kl = sqrt(_kx * _kx + _ky * _ky);           // s > 0, so never zero
     return {
         kx   : _kx,
         ky   : _ky,
-        gx   : _gx,
         gy   : _gy,
-        // Where a part's LATERAL offset (its distance east of the character's axis) goes
-        // in the shadow. The TRUE billboard projection sends it due east, unchanged, at
-        // every light angle -- east stays east, no mirror, ever. Its one degeneracy:
-        // with the light due east/west the axis itself is horizontal, east lies along
-        // it, and the figure folds into a stick. So east is split into its along-axis
-        // and across-axis parts and ONLY the across part is floored: whenever
-        // |across| >= the floor this reconstructs east exactly (every approved angle is
-        // pixel-identical), and near east-west the floor supplies vertical thickness.
-        // (A first attempt aimed the whole width at (|ay|,-ax), which is anti-parallel
-        // to a NW/SE axis: the figure collapsed and skewed precisely on the diagonals.)
-        uwx  : sqr(_kx / _kl) + uw_floor(-_ky / _kl) * (-_ky / _kl),
-        uwy  : (_kx / _kl) * (_ky / _kl) + uw_floor(-_ky / _kl) * (_kx / _kl),
+        // Every part keeps its TRUE projected position: lateral offsets stay due east at
+        // every light angle (no mirror, ever), heights ride the shear. The one degeneracy
+        // -- a due east/west light folds the figure toward a line -- is answered by
+        // THICKENING the stamp (extra passes offset vertically, see anim_shadow_paint),
+        // never by re-aiming the width: two earlier attempts that redirected lateral
+        // offsets scrambled wide figures, ramming the horse's length into vertical steps
+        // that read as a mirrored edge. Thickness fades in smoothly as the axis
+        // approaches horizontal, so nothing pops.
+        thick : 3.0 * max(0, 1 - abs(_ky / _kl) / 0.55),
         // Brightness stamped into the shadow surface: full at the light, 0 at its edge.
         a255 : round(255 * (1 - _gd / _L.r))
         // There is deliberately NO lateral mirror at any light angle. The rig is a
@@ -549,8 +540,18 @@ function anim_light_shadow(_L, _gx, _gy) {
 /// diagonal one (the horse's neck). Colour comes from the fog the caller set.
 function anim_shadow_paint(_parts, _s) {
     var _count = array_length(_parts);
-    var _kx = _s.kx, _ky = _s.ky, _gx = _s.gx, _gy = _s.gy;
-    var _uwx = _s.uwx, _uwy = _s.uwy;
+    var _kx = _s.kx, _ky = _s.ky, _gy = _s.gy;
+    var _th = _s.thick;
+    var _reps = (_th >= 0.5) ? 3 : 1;    // near east-west: stamp thrice, offset +/- thick
+    // sh_silhouette makes the stamp a FLAT grey: the texture contributes only its alpha
+    // shape, the vertex colour the value. Neither fog (ignored by textured primitives --
+    // it silently left sprite colours in the surface, so black hair cast nothing and the
+    // dark horse cast weakly) nor alpha-channel accumulation (blend equations proved
+    // unreliable on the alpha channel here, overlaps showed as translucent boxes) can do
+    // this in the fixed pipeline. Opaque grey stamps overwrite each other, so overlaps
+    // inside a silhouette stay uniform, exactly like the approved look.
+    var _grey = make_colour_rgb(_s.a255, _s.a255, _s.a255);
+    shader_set(sh_silhouette);
     for (var i = 0; i < _count; i += PART.SIZE) {
         if (_parts[i + PART.DEPTH] >= 900000) continue;      // contact blobs cast nothing
         var _al = _parts[i + PART.ALPHA];
@@ -576,23 +577,23 @@ function anim_shadow_paint(_parts, _s) {
         var _x2 = _px + _u1 * _ca + _v0 * _sa,  _y2 = _py - _u1 * _sa + _v0 * _ca;
         var _x3 = _px + _u1 * _ca + _v1 * _sa,  _y3 = _py - _u1 * _sa + _v1 * _ca;
         var _x4 = _px + _u0 * _ca + _v1 * _sa,  _y4 = _py - _u0 * _sa + _v1 * _ca;
-        // Corner -> shadow: lateral offset u rides the width direction (uwx, uwy),
-        // height h rides the shear (kx, ky). See anim_light_shadow for both.
-        var _w1 = _x1 - _gx, _h1 = _gy - _y1;
-        var _w2 = _x2 - _gx, _h2 = _gy - _y2;
-        var _w3 = _x3 - _gx, _h3 = _gy - _y3;
-        var _w4 = _x4 - _gx, _h4 = _gy - _y4;
-        draw_primitive_begin_texture(pr_trianglestrip, sprite_get_texture(_spr, _sub));
-        draw_vertex_texture_colour(_gx + _w1 * _uwx + _kx * _h1, _gy + _w1 * _uwy + _ky * _h1,
-                                   _uv[0], _uv[1], c_white, _al);
-        draw_vertex_texture_colour(_gx + _w2 * _uwx + _kx * _h2, _gy + _w2 * _uwy + _ky * _h2,
-                                   _uv[2], _uv[1], c_white, _al);
-        draw_vertex_texture_colour(_gx + _w4 * _uwx + _kx * _h4, _gy + _w4 * _uwy + _ky * _h4,
-                                   _uv[0], _uv[3], c_white, _al);
-        draw_vertex_texture_colour(_gx + _w3 * _uwx + _kx * _h3, _gy + _w3 * _uwy + _ky * _h3,
-                                   _uv[2], _uv[3], c_white, _al);
-        draw_primitive_end();
+        // Corner -> shadow: the TRUE projection, nothing else. x keeps the corner's own
+        // east-west position plus the shear; y is the shear alone.
+        var _sx1 = _x1 + _kx * (_gy - _y1), _sy1 = _gy + _ky * (_gy - _y1);
+        var _sx2 = _x2 + _kx * (_gy - _y2), _sy2 = _gy + _ky * (_gy - _y2);
+        var _sx3 = _x3 + _kx * (_gy - _y3), _sy3 = _gy + _ky * (_gy - _y3);
+        var _sx4 = _x4 + _kx * (_gy - _y4), _sy4 = _gy + _ky * (_gy - _y4);
+        for (var _r = 0; _r < _reps; _r++) {
+            var _dy = (_r == 0) ? 0 : ((_r == 1) ? -_th : _th);
+            draw_primitive_begin_texture(pr_trianglestrip, sprite_get_texture(_spr, _sub));
+            draw_vertex_texture_colour(_sx1, _sy1 + _dy, _uv[0], _uv[1], _grey, _al);
+            draw_vertex_texture_colour(_sx2, _sy2 + _dy, _uv[2], _uv[1], _grey, _al);
+            draw_vertex_texture_colour(_sx4, _sy4 + _dy, _uv[0], _uv[3], _grey, _al);
+            draw_vertex_texture_colour(_sx3, _sy3 + _dy, _uv[2], _uv[3], _grey, _al);
+            draw_primitive_end();
+        }
     }
+    shader_reset();
 }
 
 /// Additive warm sheen where a light hits a character -- quadratic in proximity, so it
@@ -647,11 +648,8 @@ function anim_shadow_char(_rig, _clip, _play, _x, _y, _dir, _look, _is_player) {
                         undefined, true);
     for (var l = 0; l < _nl; l++) {
         var _s = anim_light_shadow(global.demo_lights[l], _x, _y);
-        if (_s == undefined) continue;
-        gpu_set_fog(true, make_colour_rgb(_s.a255, _s.a255, _s.a255), 0, 0);
-        anim_shadow_paint(_p, _s);
+        if (_s != undefined) anim_shadow_paint(_p, _s);
     }
-    gpu_set_fog(false, c_black, 0, 0);
 }
 
 /// The mount-and-rider version: both shear against the mount's ground anchor and light,
@@ -669,11 +667,8 @@ function anim_shadow_pair(_h) {
                undefined, true);
     for (var l = 0; l < _nl; l++) {
         var _s = anim_light_shadow(global.demo_lights[l], _h.x, _h.y);
-        if (_s == undefined) continue;
-        gpu_set_fog(true, make_colour_rgb(_s.a255, _s.a255, _s.a255), 0, 0);
-        anim_shadow_paint(_p, _s);
+        if (_s != undefined) anim_shadow_paint(_p, _s);
     }
-    gpu_set_fog(false, c_black, 0, 0);
 }
 
 /// The shared parts list, emptied and handed out. One character (or one mount + rider

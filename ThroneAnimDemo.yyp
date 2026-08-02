@@ -49,6 +49,7 @@
     {"id":{"name":"scr_anim_pose","path":"scripts/scr_anim_pose/scr_anim_pose.yy",},},
     {"id":{"name":"scr_anim_render","path":"scripts/scr_anim_render/scr_anim_render.yy",},},
     {"id":{"name":"scr_demo_look","path":"scripts/scr_demo_look/scr_demo_look.yy",},},
+    {"id":{"name":"sh_silhouette","path":"shaders/sh_silhouette/sh_silhouette.yy",},},
     {"id":{"name":"spr_body","path":"sprites/spr_body/spr_body.yy",},},
     {"id":{"name":"spr_bone_foot","path":"sprites/spr_bone_foot/spr_bone_foot.yy",},},
     {"id":{"name":"spr_bone_hand","path":"sprites/spr_bone_hand/spr_bone_hand.yy",},},
