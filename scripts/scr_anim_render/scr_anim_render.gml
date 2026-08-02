@@ -505,12 +505,15 @@ function anim_light_shadow(_L, _gx, _gy) {
     // old constant +0.3 bias, which bent every direction toward the camera.
     var _kx = (_dgx / _gd) * _s;
     var _ky = (_dgy / _gd) * 0.5 * _s;
+    // The ONLY departure from the pure projection: |ky| floored at 0.35 so a due
+    // east/west shadow (a billboard lit edge-on really is a line) keeps enough vertical
+    // spread to stay figure-shaped. There is deliberately NO upper cap: the map is affine,
+    // so a connected figure casts a connected shadow at ANY slope -- a cap was once added
+    // here chasing "detached stripes" that were actually the old oversized pool fade
+    // chopping the shadow, and it crushed every steep shadow into a blob. Do not re-add
+    // slope limits to treat disconnection symptoms: disconnection can only come from the
+    // stages AFTER the projection (fades, compositing), never from the shear itself.
     if (abs(_ky) < 0.35) _ky = (_ky < 0) ? -0.35 : 0.35;
-    // ...and capped above: a steep toward-camera shear stretches the figure's height
-    // bands APART, and where the front view is sparse (thin legs, the belly) the bands
-    // separate into detached stripes -- the shadow read as floating blobs with holes.
-    // Capping the slope keeps the bands overlapping into one grounded mass.
-    _ky = clamp(_ky, -0.55, 0.55);
     var _kl = sqrt(_kx * _kx + _ky * _ky);           // s > 0, so never zero
     return {
         kx   : _kx,
