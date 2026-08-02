@@ -66,15 +66,19 @@ if (global.anim_ready) {
         }
         with (obj_demo_skeleton) anim_shadow_char(_L, rig, clip, play, x, y, direction, look, false);
         with (obj_demo_horse)    anim_shadow_pair(_L, self);
-        // Fade by every OTHER pool's bright core, never this light's own.
+        // Fade by every OTHER pool's bright core, never this light's own. Sized to what
+        // the eye reads as brightly lit (a quarter of the reach), NOT the attenuation
+        // radius: an oversized fade carved invisible holes into shadows a hundred pixels
+        // from any visible glow -- a missing horse head and a gap mid-body, with the
+        // culprit light off-screen.
         gpu_set_blendmode(bm_subtract);
         for (var j = 0; j < _nl; j++) {
             if (j == l) continue;
             var _L2 = global.demo_lights[j];
-            var _fw = _L2.r * 0.55;
+            var _fw = _L2.r * 0.25;
             draw_ellipse_colour(_L2.x - _fw, _L2.y - _fw * 0.5,
                                 _L2.x + _fw, _L2.y + _fw * 0.5,
-                                make_colour_rgb(90, 90, 90), c_black, false);
+                                make_colour_rgb(70, 70, 70), c_black, false);
         }
         gpu_set_blendmode(bm_normal);
         surface_reset_target();
