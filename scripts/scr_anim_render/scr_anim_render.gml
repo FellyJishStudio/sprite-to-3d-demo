@@ -503,18 +503,16 @@ function anim_light_shadow(_L, _gx, _gy) {
     // vertical spread for the figure to stay connected and shaped. Diagonal and
     // north/south shadows are untouched (their |ky| already clears it); this is NOT the
     // old constant +0.3 bias, which bent every direction toward the camera.
+    // The PURE iso projection, with no floors and no caps: every term is continuous in
+    // the light-character geometry, so the shadow can never jump as either moves -- a
+    // hard |ky| floor once lived here and snapped the shadow's slope whenever the
+    // character crossed the light's horizontal. Near-east-west thinness (a billboard lit
+    // edge-on really is a line) is answered by the CONTINUOUS thickening below, which
+    // fades in as the axis flattens; and slope limits can never fix disconnection --
+    // the map is affine, a connected figure casts a connected shadow at any slope.
     var _kx = (_dgx / _gd) * _s;
     var _ky = (_dgy / _gd) * 0.5 * _s;
-    // The ONLY departure from the pure projection: |ky| floored at 0.35 so a due
-    // east/west shadow (a billboard lit edge-on really is a line) keeps enough vertical
-    // spread to stay figure-shaped. There is deliberately NO upper cap: the map is affine,
-    // so a connected figure casts a connected shadow at ANY slope -- a cap was once added
-    // here chasing "detached stripes" that were actually the old oversized pool fade
-    // chopping the shadow, and it crushed every steep shadow into a blob. Do not re-add
-    // slope limits to treat disconnection symptoms: disconnection can only come from the
-    // stages AFTER the projection (fades, compositing), never from the shear itself.
-    if (abs(_ky) < 0.35) _ky = (_ky < 0) ? -0.35 : 0.35;
-    var _kl = sqrt(_kx * _kx + _ky * _ky);           // s > 0, so never zero
+    var _kl = sqrt(_kx * _kx + _ky * _ky);           // >= s/2 > 0: unit dir, y halved
     return {
         kx   : _kx,
         ky   : _ky,
