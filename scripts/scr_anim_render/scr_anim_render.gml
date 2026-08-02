@@ -141,7 +141,7 @@ function anim_mount_state(_rig, _dir) {
 /// Appends to `_parts` rather than drawing, so a mount and its rider can share one sorted
 /// list. Positions are absolute.
 function anim_build(_parts, _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
-                    _mount = undefined) {
+                    _mount = undefined, _flat = false) {
     var _f    = anim_facing(_rig, _dir, _is_player);
     var _dcos = _f.dcos, _zsin = _f.zsin, _mir = _f.mirror, _down = _f.down;
     var _dat  = _clip.data;
@@ -153,7 +153,11 @@ function anim_build(_parts, _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
     var _has_tip = false;
     var _base  = array_length(_parts);            // where this character's parts start
 
-    var _iso = _rig.iso, _iso_y = 0;
+    // A shadow build runs FLAT: the iso tilt is a view-space cheat (the near half rides
+    // up the screen), not geometry, and in a sheared silhouette its per-part height steps
+    // turn into staircase edges between the horse's body pieces -- the "weird boxes".
+    var _iso = _flat ? undefined : _rig.iso;
+    var _iso_y = 0;
     if (_iso != undefined) {
         _iso_y = (_down ? _iso.ampDown : _iso.ampUp) * dsin(_f.skew);
         if (abs(_iso_y) <= 1 && _down) _iso_y = 0;
@@ -495,11 +499,13 @@ function anim_light_shadow(_L, _gx, _gy) {
     var _gd  = sqrt(_dgx * _dgx + _dgy * _dgy);
     if (_gd > _L.r || _gd < 1) return undefined;
     var _s  = min(_gd / _L.h, 2.2);                  // shadow length per pixel of height
-    // ky gets a constant camera-ward tilt on top of the directional term: the 1:2
-    // ground's own inclination showing up in the projection.
+    // The shear is the PURE iso away-direction: unit ground vector away from the light,
+    // times s, with ground-y halved back onto the screen. No extra tilt -- an earlier
+    // +0.3 camera-ward bias (a thickness hack) dragged every shadow steeply toward the
+    // camera and broke the 1:2 direction; thickness is uw_floor's job now.
     var _kx = (_dgx / _gd) * _s;
-    var _ky = (_dgy / _gd) * 0.5 * _s + 0.3;
-    var _kl = sqrt(_kx * _kx + _ky * _ky);           // never 0: the tilt guarantees it
+    var _ky = (_dgy / _gd) * 0.5 * _s;
+    var _kl = sqrt(_kx * _kx + _ky * _ky);           // s > 0, so never zero
     return {
         kx   : _kx,
         ky   : _ky,
@@ -633,9 +639,10 @@ function anim_light_sheen(_parts, _gx, _gy) {
 function anim_shadow_char(_rig, _clip, _play, _x, _y, _dir, _look, _is_player) {
     var _nl = array_length(global.demo_lights);
     if (_nl == 0) return;
-    // ONE ordinary build serves every light: the shear happens per quad in
+    // ONE flat (untilted) build serves every light: the shear happens per quad in
     // anim_shadow_paint, not in the pose.
-    var _p = anim_build(anim_scratch(), _rig, _clip, _play, _x, _y, _dir, _look, _is_player);
+    var _p = anim_build(anim_scratch(), _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
+                        undefined, true);
     for (var l = 0; l < _nl; l++) {
         var _s = anim_light_shadow(global.demo_lights[l], _x, _y);
         if (_s == undefined) continue;
@@ -654,9 +661,10 @@ function anim_shadow_pair(_h) {
     if (_h.rider != noone) {
         var _r = _h.rider;
         anim_build(_p, _r.rig, _r.clip, _r.play, _r.x, _r.y, _r.direction, _r.look, true,
-                   anim_mount_state(_h.rig, _h.direction));
+                   anim_mount_state(_h.rig, _h.direction), true);
     }
-    anim_build(_p, _h.rig, _h.clip, _h.play, _h.x, _h.y, _h.direction, _h.look, false);
+    anim_build(_p, _h.rig, _h.clip, _h.play, _h.x, _h.y, _h.direction, _h.look, false,
+               undefined, true);
     for (var l = 0; l < _nl; l++) {
         var _s = anim_light_shadow(global.demo_lights[l], _h.x, _h.y);
         if (_s == undefined) continue;
