@@ -489,7 +489,7 @@ function anim_paint(_parts) {
 /// east at both the north and south poles), parked at exactly east-west where the flip
 /// is a subtle vertical swap of an already-horizontal silhouette.
 function uw_floor(_c) {
-    static _m = 0.45;
+    static _m = 0.55;
     return (_c >= 0) ? max(_c, _m) : min(_c, -_m);
 }
 
@@ -498,7 +498,9 @@ function anim_light_shadow(_L, _gx, _gy) {
     var _dgy = (_gy - _L.y) * 2;                     // screen y -> iso ground y
     var _gd  = sqrt(_dgx * _dgx + _dgy * _dgy);
     if (_gd > _L.r || _gd < 1) return undefined;
-    var _s  = min(_gd / _L.h, 2.2);                  // shadow length per pixel of height
+    // Length cap 1.6, down from 2.2: sunset-length shadows turned a mounted pair (75px of
+    // stacked height) into a screen-crossing wedge that read as a smear, not a figure.
+    var _s  = min(_gd / _L.h, 1.6);                  // shadow length per pixel of height
     // The shear is the PURE iso away-direction: unit ground vector away from the light,
     // times s, with ground-y halved back onto the screen. No extra tilt -- an earlier
     // +0.3 camera-ward bias (a thickness hack) dragged every shadow steeply toward the

@@ -76,7 +76,7 @@ if (global.anim_ready) {
     gpu_set_blendmode(bm_normal);
     surface_reset_target();
     gpu_set_blendmode(bm_subtract);
-    draw_surface_ext(shadow_surf, _x0, _y0, 1, 1, 0, make_colour_rgb(115, 115, 115), 1);
+    draw_surface_ext(shadow_surf, _x0, _y0, 1, 1, 0, make_colour_rgb(140, 140, 140), 1);
     gpu_set_blendmode(bm_normal);
 }
 
