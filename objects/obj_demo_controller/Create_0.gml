@@ -13,6 +13,7 @@ menu_x      = 0;
 menu_y      = 0;
 menu_target = noone;
 click_used  = false;      // a press the HUD took stays taken until release
+hold        = 0;          // frames the current left press has survived, for the long press
 
 // Camera, from obj_camera/Create_0.gml: an orthographic view `base_height` tall scaled by
 // `zoom_level`, defaulting to 0.6 -- which is the framing the real game plays at. The room
@@ -29,6 +30,18 @@ function demo_spawn(_n) {
         instance_create_depth(irandom_range(48, room_width  - 48),
                               irandom_range(48, room_height - 48), 0, obj_demo_skeleton);
     }
+}
+
+/// The horse under a world point, or noone.
+///
+/// These characters are drawn bone by bone, not from sprite_index, so their collision masks
+/// bear no relation to what is on screen -- spr_horse_body_middle's is 21x17px and sits
+/// *below* the drawn horse, so instance_position() almost never hits it. Pick the nearest
+/// horse to the cursor and test against the drawn body instead.
+function demo_horse_at(_mx, _my) {
+    var _near = instance_nearest(_mx, _my, obj_demo_horse);
+    if (_near == noone) return noone;
+    return (point_distance(_mx, _my, _near.x, _near.y - 18) <= 34) ? _near : noone;
 }
 
 function demo_kill(_n) {

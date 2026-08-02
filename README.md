@@ -263,6 +263,7 @@ source project, not the 5 this demo ships.
 | `Space` | draw / sheathe the sword |
 | `R` | shuffle the character's look |
 | right-click a horse | ride menu, then click **Ride** / **Dismount** |
+| hold left on a horse | the same menu, for anyone without a right button (0.4 s) |
 | `[+10] [+50] [-10] [reset]` | spawn or remove skeletons |
 
 HUD readouts: `fps`, `fps_real`, the skeleton count and the current zoom. **`fps_real` is

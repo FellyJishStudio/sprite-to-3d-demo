@@ -2,7 +2,9 @@
 // eases into its turns: `direction += angle_difference(target, direction) *
 // (1 - power(1 - 0.1, dt * 60))`, which is 0.1 per step at 60fps (:584-585).
 if (rider == noone) {
-    if (irandom(160) == 0) { face = irandom(359); speed = choose(0, 0, 1.4); }
+    // 0.7, not the client's 1.4: at the higher speed the walk cycle cannot keep up with the
+    // ground and the horse skates. The clip is the fixed thing here, so the speed gives way.
+    if (irandom(160) == 0) { face = irandom(359); speed = choose(0, 0, 0.7); }
     if (x < 96 || x > room_width - 96 || y < 96 || y > room_height - 96) {
         face = point_direction(x, y, room_width / 2, room_height / 2);
     }

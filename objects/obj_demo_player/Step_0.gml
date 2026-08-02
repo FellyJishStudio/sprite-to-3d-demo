@@ -39,7 +39,10 @@ if (_dist <= 3) {
 if (mount != noone) {
     var _horse = mount;              // GML cannot assign through `mount.field` directly
     _horse.direction = direction;
-    _horse.speed     = mv * 2.2;     // the horse carries you faster than you walk
+    // The horse carries you faster than you walk, but not by the flat 2.2 this used to
+    // apply to both gaits -- that outran both cycles and the hooves slid. Walking takes
+    // half of it and running three quarters, which still clears the 2.2 run threshold below.
+    _horse.speed     = mv * (_run ? 1.65 : 1.1);
     clip  = (mv <= 0.3) ? rig.gait.rideIdle : rig.gait.rideRun;
     // x / y / depth are set in the End Step, once the mount has actually moved.
 } else {

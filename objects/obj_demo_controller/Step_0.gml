@@ -25,6 +25,7 @@ if (_wheel != 0) {
 
 if (mouse_check_button_pressed(mb_left)) {
     click_used = false;
+    hold       = 0;
 
     for (var i = 0; i < array_length(buttons); i++) {
         if (point_in_rectangle(_gx, _gy, 16 + i * 92, 44, 96 + i * 92, 74)) {
@@ -55,6 +56,29 @@ if (mouse_check_button_pressed(mb_left)) {
 
 }
 
+// Holding left on a horse is the second way into the ride menu, for anyone without a right
+// button. It fires once, on the frame the press crosses RIDE_HOLD, and then claims the
+// press so the drag below stops steering -- otherwise the player would keep walking at the
+// horse underneath the open menu.
+#macro RIDE_HOLD 24
+
+if (mouse_check_button(mb_left) && !click_used) {
+    hold++;
+    if (hold == RIDE_HOLD) {
+        var _h = demo_horse_at(mouse_x, mouse_y);
+        if (_h != noone) {
+            menu_open   = true;
+            menu_target = _h;
+            menu_x      = _gx;
+            menu_y      = _gy;
+            click_used  = true;
+            var _ps = instance_find(obj_demo_player, 0);
+            _ps.target_x = _ps.x;      // and stop where it is, rather than walking on
+            _ps.target_y = _ps.y;
+        }
+    }
+}
+
 // Anything not taken by the UI steers. The client re-reads the HELD button rather than the
 // press edge (obj_player/Step_0.gml:1509), so dragging the cursor keeps the character
 // chasing it; a click closer than min_ground_click_distance means "stop here" (:1680-1693).
@@ -66,12 +90,7 @@ if (mouse_check_button(mb_left) && !click_used) {
 }
 
 if (mouse_check_button_pressed(mb_right)) {
-    // These characters are drawn bone by bone, not from sprite_index, so their collision
-    // masks bear no relation to what is on screen -- spr_horse_body_middle's is 21x17px and
-    // sits *below* the drawn horse, so instance_position() almost never hits it. Pick the
-    // nearest horse to the cursor instead.
-    var _near = instance_nearest(mouse_x, mouse_y, obj_demo_horse);
-    menu_open = (_near != noone)
-             && (point_distance(mouse_x, mouse_y, _near.x, _near.y - 18) <= 34);
+    var _near = demo_horse_at(mouse_x, mouse_y);
+    menu_open = (_near != noone);
     if (menu_open) { menu_target = _near; menu_x = _gx; menu_y = _gy; }
 }
