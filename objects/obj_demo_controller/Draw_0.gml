@@ -67,12 +67,21 @@ if (global.anim_ready) {
         var _fw = _L2.r * 0.55;
         draw_ellipse_colour(_L2.x - _fw, _L2.y - _fw * 0.5,
                             _L2.x + _fw, _L2.y + _fw * 0.5,
-                            make_colour_rgb(140, 140, 140), c_black, false);
+                            make_colour_rgb(90, 90, 90), c_black, false);
     }
     gpu_set_blendmode(bm_normal);
     surface_reset_target();
+    // Composite four times at 1px diagonal offsets, quarter strength each: the interior
+    // (where all four overlap) reaches full darkness, every edge gets a graduated
+    // penumbra. The soft edge is what stops the silhouette reading as the rectangles the
+    // sprites are actually made of -- a hard-edged stamp shows every art corner as a
+    // block, worst when a toward-camera shadow compresses the figure.
     gpu_set_blendmode(bm_subtract);
-    draw_surface_ext(shadow_surf, _x0, _y0, 1, 1, 0, make_colour_rgb(140, 140, 140), 1);
+    var _sc = make_colour_rgb(35, 35, 35);
+    draw_surface_ext(shadow_surf, _x0 - 1, _y0 - 1, 1, 1, 0, _sc, 1);
+    draw_surface_ext(shadow_surf, _x0 + 1, _y0 - 1, 1, 1, 0, _sc, 1);
+    draw_surface_ext(shadow_surf, _x0 - 1, _y0 + 1, 1, 1, 0, _sc, 1);
+    draw_surface_ext(shadow_surf, _x0 + 1, _y0 + 1, 1, 1, 0, _sc, 1);
     gpu_set_blendmode(bm_normal);
 }
 

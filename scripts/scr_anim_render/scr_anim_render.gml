@@ -141,7 +141,7 @@ function anim_mount_state(_rig, _dir) {
 /// Appends to `_parts` rather than drawing, so a mount and its rider can share one sorted
 /// list. Positions are absolute.
 function anim_build(_parts, _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
-                    _mount = undefined, _flat = false) {
+                    _mount = undefined) {
     var _f    = anim_facing(_rig, _dir, _is_player);
     var _dcos = _f.dcos, _zsin = _f.zsin, _mir = _f.mirror, _down = _f.down;
     var _dat  = _clip.data;
@@ -153,10 +153,12 @@ function anim_build(_parts, _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
     var _has_tip = false;
     var _base  = array_length(_parts);            // where this character's parts start
 
-    // A shadow build runs FLAT: the iso tilt is a view-space cheat (the near half rides
-    // up the screen), not geometry, and in a sheared silhouette its per-part height steps
-    // turn into staircase edges between the horse's body pieces -- the "weird boxes".
-    var _iso = _flat ? undefined : _rig.iso;
+    // Shadows build with the SAME iso tilt as the drawn figure. The horse's art is
+    // authored to be contiguous WITH the tilt applied per facing -- a flat build was
+    // tried for shadows and opened 1-7px seams between its body pieces at camera-facing
+    // angles. (The "boxes" that flat build chased were a colour artifact of the fog era,
+    // fixed for real by sh_silhouette's uniform grey.)
+    var _iso = _rig.iso;
     var _iso_y = 0;
     if (_iso != undefined) {
         _iso_y = (_down ? _iso.ampDown : _iso.ampUp) * dsin(_f.skew);
@@ -642,10 +644,9 @@ function anim_light_sheen(_parts, _gx, _gy) {
 function anim_shadow_char(_rig, _clip, _play, _x, _y, _dir, _look, _is_player) {
     var _nl = array_length(global.demo_lights);
     if (_nl == 0) return;
-    // ONE flat (untilted) build serves every light: the shear happens per quad in
+    // ONE ordinary build serves every light: the shear happens per quad in
     // anim_shadow_paint, not in the pose.
-    var _p = anim_build(anim_scratch(), _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
-                        undefined, true);
+    var _p = anim_build(anim_scratch(), _rig, _clip, _play, _x, _y, _dir, _look, _is_player);
     for (var l = 0; l < _nl; l++) {
         var _s = anim_light_shadow(global.demo_lights[l], _x, _y);
         if (_s != undefined) anim_shadow_paint(_p, _s);
@@ -661,10 +662,9 @@ function anim_shadow_pair(_h) {
     if (_h.rider != noone) {
         var _r = _h.rider;
         anim_build(_p, _r.rig, _r.clip, _r.play, _r.x, _r.y, _r.direction, _r.look, true,
-                   anim_mount_state(_h.rig, _h.direction), true);
+                   anim_mount_state(_h.rig, _h.direction));
     }
-    anim_build(_p, _h.rig, _h.clip, _h.play, _h.x, _h.y, _h.direction, _h.look, false,
-               undefined, true);
+    anim_build(_p, _h.rig, _h.clip, _h.play, _h.x, _h.y, _h.direction, _h.look, false);
     for (var l = 0; l < _nl; l++) {
         var _s = anim_light_shadow(global.demo_lights[l], _h.x, _h.y);
         if (_s != undefined) anim_shadow_paint(_p, _s);
