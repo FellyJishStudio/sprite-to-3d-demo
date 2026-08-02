@@ -48,12 +48,17 @@ function anim_facing(_rig, _dir, _is_player) {
     // anywhere. Every caller reads it out before another call can happen; nothing may
     // store it. This is the render loop's hottest allocation site, once per character
     // per frame, which is why it is scratch and not a fresh struct.
-    static _f = { raw:0, skew:0, dep:0, dcos:0, mirror:0, down:false, dirDep:0,
+    static _f = { raw:0, skew:0, dep:0, dcos:0, zsin:0, mirror:0, down:false, dirDep:0,
                   left:false, up:false, right:false };
     _f.raw    = _raw;
     _f.skew   = _skew;
     _f.dep    = _dep;
     _f.dcos   = dcos(_dep);
+    // Z's projection coefficient, from the SAME angle as dcos. Z is the lateral axis --
+    // perpendicular to the rig plane -- and rotating the rig about the vertical axis sends
+    // rig-x to screen-x times cos and rig-z to screen-x times -sin: a z motion sweeps side
+    // to side facing the camera, mirrors facing away, and vanishes in profile.
+    _f.zsin   = -dsin(_dep);
     _f.mirror = (_raw > 90 && _raw < 270) ? -1 : 1;
     // Which band counts as "facing away" is per rig, and the rigs genuinely disagree.
     _f.down   = !(_skew < _rig.faceBand[1] && _skew > _rig.faceBand[0]);
@@ -138,7 +143,7 @@ function anim_mount_state(_rig, _dir) {
 function anim_build(_parts, _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
                     _mount = undefined) {
     var _f    = anim_facing(_rig, _dir, _is_player);
-    var _dcos = _f.dcos, _mir = _f.mirror, _down = _f.down;
+    var _dcos = _f.dcos, _zsin = _f.zsin, _mir = _f.mirror, _down = _f.down;
     var _dat  = _clip.data;
     var _rows = _clip.row;
     var _at   = anim_frame_base(_clip, _play);   // index of this frame's first float
@@ -170,8 +175,9 @@ function anim_build(_parts, _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
     var _far = -1;
     if (_mounted) _far = _f.left ? 0 : 1;
 
-    // Squash-follow: foreshorten this rider on the mount's skewed angle (see anim_mount_state).
-    if (_mounted && _mount.squash) _dcos = dcos(_f.skew);
+    // Squash-follow: foreshorten this rider on the mount's skewed angle (see
+    // anim_mount_state) -- BOTH coefficients, or the rider would shear.
+    if (_mounted && _mount.squash) { _dcos = dcos(_f.skew); _zsin = -dsin(_f.skew); }
 
     // Bones whose sub-image follows a rig-specific steep band instead of facing_down.
     var _rule = _rig.steep, _steep = false;
@@ -254,10 +260,11 @@ function anim_build(_parts, _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
                 _depth,
                 _m.sprite,
                 anim_sub(_m, _steep, _back),
-                // X foreshortened by cos(direction). The armature SCALE reaches the sprite
-                // only, never the joint position -- multiplying the position by it drags
-                // the part toward the origin, which once sank the head into the torso.
-                _x + _dat[_r + ANIM_X] * _dcos + _ox,
+                // X foreshortened by cos(direction), z swept in by -sin of the same angle.
+                // The armature SCALE reaches the sprite only, never the joint position --
+                // multiplying the position by it drags the part toward the origin, which
+                // once sank the head into the torso.
+                _x + _dat[_r + ANIM_X] * _dcos + _dat[_r + ANIM_Z] * _zsin + _ox,
                 _y + _dat[_r + ANIM_Y] + _oy
                     + ((_iso == undefined) ? 0 : anim_iso(_m.iso_cls, _m.iso_flat, _iso_y, _down)),
                 _dat[_r + ANIM_ANGLE] * _dcos,
@@ -275,7 +282,7 @@ function anim_build(_parts, _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
         for (var i = 0; i < _n; i++) {
             var _r2 = _at + _rows[_bs[i].slot];
             _row[i] = _r2;
-            _jx[i] = _x + _dat[_r2 + ANIM_X] * _dcos + _ox;
+            _jx[i] = _x + _dat[_r2 + ANIM_X] * _dcos + _dat[_r2 + ANIM_Z] * _zsin + _ox;
             _jy[i] = _y + _dat[_r2 + ANIM_Y] + _oy
                    + ((_iso == undefined) ? 0
                       : anim_iso(_bs[i].iso_cls, _bs[i].iso_flat, _iso_y, _down));

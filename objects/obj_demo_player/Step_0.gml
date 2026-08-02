@@ -36,6 +36,11 @@ if (_dist <= 3) {
     mv = min(lerp(mv, _run ? 1.5 : 0.5, 0.2), _dist);   // ramp up, never overshoot
 }
 
+// Waving is an idle-only gesture: moving past the walk threshold or mounting cancels it
+// rather than pausing it, so the arm never snaps back up seconds after a ride.
+if (wave_t > 0) wave_t -= 1 / game_get_speed(gamespeed_fps);
+if (mv > 0.3 || mount != noone) wave_t = 0;
+
 if (mount != noone) {
     var _horse = mount;              // GML cannot assign through `mount.field` directly
     _horse.direction = direction;
@@ -53,7 +58,8 @@ if (mount != noone) {
         x = target_x;                // arrive exactly, then idle
         y = target_y;
     }
-    clip  = (mv <= 0.3) ? rig.gait.idle : (_run ? rig.gait.run : rig.gait.walk);
+    clip  = (mv <= 0.3) ? ((wave_t > 0) ? rig.gait.wave : rig.gait.idle)
+                        : (_run ? rig.gait.run : rig.gait.walk);
     depth = -y * 100;
 }
 

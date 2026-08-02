@@ -30,6 +30,13 @@
     "playback": "loop"
   },
   {
+    "id": "anim_wave",
+    "rig": "humanoid",
+    "sampleRate": 20,
+    "playback": "loop",
+    "z": true
+  },
+  {
     "id": "sq_horse_idle_state",
     "rig": "horse",
     "sampleRate": 4,

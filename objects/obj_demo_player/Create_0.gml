@@ -8,3 +8,4 @@ direction = 270;
 target_x  = x;                // click destination -- the controller sets it
 target_y  = y;
 mv        = 0;                // current move speed, ramped toward walk or run
+wave_t    = 0;                // seconds of waving left; the HUD button sets it

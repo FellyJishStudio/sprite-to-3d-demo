@@ -7,7 +7,8 @@ randomize();
 spawned = false;
 
 depth       = 20000;          // the ground grid draws behind every character
-buttons     = [["+10", 10], ["+50", 50], ["-10", -10], ["reset", 0]];
+// Numeric second element = spawner action; the string "wave" starts the player's wave.
+buttons     = [["+10", 10], ["+50", 50], ["-10", -10], ["reset", 0], ["wave", "wave"]];
 menu_open   = false;
 menu_x      = 0;
 menu_y      = 0;

@@ -250,22 +250,36 @@ function anim_clip_load(_entry) {
     }
 
     // rig bone slot -> index of that bone's first float within a frame. Resolved here so
-    // that drawing is pure arithmetic.
+    // that drawing is pure arithmetic. Rows are 7-wide in memory (see scr_anim_pose).
     var _row = array_create(array_length(_rig.boneNames));
     for (var i = 0; i < array_length(_rig.boneNames); i++) {
-        _row[i] = _row_of[$ _rig.boneNames[i]] * 6;
+        _row[i] = _row_of[$ _rig.boneNames[i]] * 7;
     }
 
-    var _count = _frames * _bones * 6;
-    var _data  = array_create(_count);
-    for (var i = 0; i < _count; i++) _data[i] = buffer_read(_b, buffer_f32);
+    // A clip that animates Z ships 7 floats per bone [x y z angle xscale yscale alpha];
+    // everything older ships the classic 6. The file itself cannot say which -- v3 has no
+    // version field -- so the manifest's `z` flag decides, and legacy rows are widened
+    // with z=0 HERE so the renderer runs one layout with no per-clip branch.
+    var _has_z = _entry[$ "z"] ?? false;
+    var _rows_total = _frames * _bones;
+    var _data = array_create(_rows_total * 7);
+    var _w = 0;
+    repeat (_rows_total) {
+        _data[_w++] = buffer_read(_b, buffer_f32);                    // x
+        _data[_w++] = buffer_read(_b, buffer_f32);                    // y
+        _data[_w++] = _has_z ? buffer_read(_b, buffer_f32) : 0;       // z
+        _data[_w++] = buffer_read(_b, buffer_f32);                    // angle
+        _data[_w++] = buffer_read(_b, buffer_f32);                    // xscale
+        _data[_w++] = buffer_read(_b, buffer_f32);                    // yscale
+        _data[_w++] = buffer_read(_b, buffer_f32);                    // alpha
+    }
 
     var _c = {
         data   : _data,
         frames : _frames,
         speed  : _speed,
         rate   : _entry.sampleRate,      // v3 drops it; the manifest carries the real one
-        stride : _bones * 6,
+        stride : _bones * 7,
         row    : _row
     };
 

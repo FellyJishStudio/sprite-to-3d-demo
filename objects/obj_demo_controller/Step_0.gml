@@ -31,7 +31,12 @@ if (mouse_check_button_pressed(mb_left)) {
         if (point_in_rectangle(_gx, _gy, 16 + i * 92, 44, 96 + i * 92, 74)) {
             click_used = true;
             var _n = buttons[i][1];
-            if      (_n == 0) { demo_kill(instance_number(obj_demo_skeleton)); demo_spawn(3); }
+            if (is_string(_n)) {
+                // Two loops of the wave clip; the player Step owns the how and the when.
+                var _pw = instance_find(obj_demo_player, 0);
+                if (_pw != noone) _pw.wave_t = 2.7;
+            }
+            else if (_n == 0) { demo_kill(instance_number(obj_demo_skeleton)); demo_spawn(3); }
             else if (_n > 0)    demo_spawn(_n);
             else                demo_kill(-_n);
         }

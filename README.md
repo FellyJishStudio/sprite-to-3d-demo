@@ -262,6 +262,7 @@ source project, not the 5 this demo ships.
 | mouse wheel | zoom, 0.1 per notch |
 | `Space` | draw / sheathe the sword |
 | `R` | shuffle the character's look |
+| `[wave]` button | wave the right hand — a **Z-axis** animation: the hand sweeps side to side facing the camera, mirrors facing away, and collapses to nothing in profile, because z projects into screen x through `-sin(direction)` exactly as x projects through `cos(direction)`. Spin while waving to see it. |
 | right-click a horse | ride menu, then click **Ride** / **Dismount** |
 | hold left on a horse | the same menu, for anyone without a right button (0.4 s) |
 | `[+10] [+50] [-10] [reset]` | spawn or remove skeletons |
