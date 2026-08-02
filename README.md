@@ -34,6 +34,23 @@ Igor.exe --project=<path>\ThroneAnimDemo.yyp ^
          --cache=C:\tmp\demo-cache --temp=C:\tmp\demo-temp windows Run
 ```
 
+### Exporting to HTML5 / GX Games — turn off "Remove unused assets"
+
+`options_main.yy` sets `option_remove_unused_assets` to **false**, and it has to stay that
+way. Every bone sprite here is named as a *string* in the rig JSON and resolved at load
+time with `asset_get_index` — which is the whole point of the data-driven design, but it
+also means the compiler's reachability pass cannot see those sprites and deletes them.
+
+A Windows test run does not strip, so this only bites on export, and it fails *quietly*:
+the game boots, the HUD and ground grid draw normally, and each character collapses to the
+handful of sprites that happen to be written literally somewhere in GML (`spr_head_base`,
+`spr_horse_body_middle`, `spr_player_shadow`, `spr_sword`). It reads as a rendering bug,
+not a build setting.
+
+The real game avoids this without the option because it hard-codes `spr_bone_*` in GML.
+A data-driven runtime cannot, so it pays for the flexibility with this setting. If a sprite
+ever fails to resolve, the HUD prints a red `MISSING <sprite>` line.
+
 ---
 
 ## 2. How the illusion works

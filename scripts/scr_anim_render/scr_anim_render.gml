@@ -405,7 +405,9 @@ function anim_paint(_parts) {
             var _o2 = _order[i];
             var _s2 = _parts[_o2 + PART.SPR];
             if (_s2 == undefined || !sprite_exists(_s2)) continue;
-            var _nm = string_replace(sprite_get_name(_s2), "spr_", "");
+            // sprite_get_name needs the asset-name table, which some targets strip; the
+            // index is still a usable label when it is missing.
+            var _nm = string_replace(sprite_get_name(_s2) ?? string(_s2), "spr_", "");
             var _tx = _parts[_o2 + PART.X], _ty = _parts[_o2 + PART.Y];
             draw_set_colour(c_black);
             draw_text(_tx + 1, _ty + 1, string(i) + ":" + _nm + " " + string(_parts[_o2 + PART.DEPTH]));

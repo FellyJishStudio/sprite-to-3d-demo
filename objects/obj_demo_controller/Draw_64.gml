@@ -11,6 +11,16 @@ draw_text(16, 12, "fps " + string(fps) + "     fps_real " + string(fps_real)
                 + "     skeletons " + string(instance_number(obj_demo_skeleton))
                 + "     zoom " + string_format(zoom, 1, 1));
 
+// A sprite that fails to resolve is only noticed during the final parse, one frame before
+// anim_ready goes true -- so the loading screen never gets a chance to show it. Keep it on
+// screen instead. This is the only visible symptom of an export having stripped a sprite
+// that the rig JSON names as a string; see option_remove_unused_assets in options_main.yy.
+if (global.anim_error != "") {
+    draw_set_colour(c_red);
+    draw_text(16, 28, "MISSING " + global.anim_error);
+    draw_set_colour(c_white);
+}
+
 for (var i = 0; i < array_length(buttons); i++) {
     var _x = 16 + i * 92;
     draw_set_colour(c_black);  draw_rectangle(_x, 44, _x + 80, 74, false);

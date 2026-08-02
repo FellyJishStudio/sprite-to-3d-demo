@@ -95,10 +95,15 @@ function anim_rig_load(_id) {
         var _b = _r.bones[i];
         var _s = is_struct(_skin) ? _skin[$ _b.id] : undefined;   // skin overrides art
         if (_s == undefined) _s = _b;
+        // Every sprite is resolved by NAME, so if a target ever strips asset names (or
+        // "remove unused assets" drops one nothing references directly) the whole character
+        // silently draws nothing. Say which sprite instead.
+        var _spr = asset_get_index(_s.sprite);
+        if (_spr < 0 && global.anim_error == "") global.anim_error = "sprite " + string(_s.sprite);
         _meta[$ _b.id] = {
             name   : _b.name,
             slot   : i,                          // index into a clip's row table
-            sprite : asset_get_index(_s.sprite),
+            sprite : _spr,
             frames : _s.spriteFrames,
             len    : _s.naturalLength,
             tint   : _demo.tint[$ _b.id] ?? "plain"   // per BONE: the hands are not sleeve
