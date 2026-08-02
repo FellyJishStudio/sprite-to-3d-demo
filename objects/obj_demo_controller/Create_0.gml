@@ -10,6 +10,7 @@ spawned = false;
 // anim_cast_shadows) and paints a 2:1 isometric glow pool on the ground. `h` is the
 // light's height above the ground plane -- what shadow length is projected against.
 global.demo_lights = [];
+shadow_surf = -1;             // scratch surface for the cast-shadow layer, see Draw
 function demo_add_light(_x, _y) {
     if (array_length(global.demo_lights) >= 6) return;      // enough for a demo room
     array_push(global.demo_lights, { x: _x, y: _y, h: 60, r: 340 });

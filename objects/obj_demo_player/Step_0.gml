@@ -68,5 +68,8 @@ y = clamp(y, 1, room_height);
 
 look.sword  = sword_on ? c_white : undefined;
 look.shadow = (mount != noone) ? undefined : c_white;   // the mount casts its own
+// While waving toward the camera the raised hand must draw over the head AND the hair;
+// the chain is named here and clamped in front of the head in anim_build.
+look.frontChain = (wave_t > 0) ? "armLeftUpper" : undefined;
 
 play += clip.speed / game_get_speed(gamespeed_fps);

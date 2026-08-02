@@ -12,7 +12,9 @@ if (!spawned) {
     view_object[0] = obj_demo_player;      // the room's follow target, now that it exists
     demo_spawn(3);
     demo_add_light(room_width / 2 - 150, room_height / 2 - 90);
-    demo_add_light(room_width / 2 + 260, room_height / 2 + 130);
+    // Close enough to the horse's spawn that it casts from the first frame -- the iso
+    // metric doubles the y separation, so a light "just below" is further than it looks.
+    demo_add_light(room_width / 2 + 250, room_height / 2 + 10);
 }
 
 if (keyboard_check_pressed(ord("L"))) demo_add_light(mouse_x, mouse_y);

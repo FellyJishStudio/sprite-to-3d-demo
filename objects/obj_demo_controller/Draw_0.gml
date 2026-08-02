@@ -37,6 +37,34 @@ for (var i = 0; i < array_length(global.demo_lights); i++) {
 }
 gpu_set_blendmode(bm_normal);
 
+// Cast-shadow layer: every character's silhouettes composited into ONE surface, then
+// subtracted from the scene once. The surface is what makes each shadow UNIFORM -- parts
+// stamp opaque grey (fog trick; brightness = the light's edge fade), so overlaps inside a
+// silhouette cannot double-darken, and two characters' crossing shadows take the darker
+// stamp instead of stacking. Scratch, not a cache: remade when lost or when the zoom
+// resizes the view, cleared and restamped every frame.
+if (global.anim_ready) {
+    var _sw = round(camera_get_view_width(_cam)), _sh = round(camera_get_view_height(_cam));
+    if (!surface_exists(shadow_surf) || surface_get_width(shadow_surf) != _sw
+                                     || surface_get_height(shadow_surf) != _sh) {
+        if (surface_exists(shadow_surf)) surface_free(shadow_surf);
+        shadow_surf = surface_create(_sw, _sh);
+    }
+    surface_set_target(shadow_surf);
+    draw_clear_alpha(c_black, 0);
+    camera_apply(_cam);        // world coordinates land on the surface as they do on screen
+    var _pw = instance_find(obj_demo_player, 0);
+    if (_pw != noone && _pw.mount == noone) {
+        anim_shadow_char(_pw.rig, _pw.clip, _pw.play, _pw.x, _pw.y, _pw.direction, _pw.look, true);
+    }
+    with (obj_demo_skeleton) anim_shadow_char(rig, clip, play, x, y, direction, look, false);
+    with (obj_demo_horse)    anim_shadow_pair(self);
+    surface_reset_target();
+    gpu_set_blendmode(bm_subtract);
+    draw_surface_ext(shadow_surf, _x0, _y0, 1, 1, 0, make_colour_rgb(115, 115, 115), 1);
+    gpu_set_blendmode(bm_normal);
+}
+
 // Walk destination. The client draws the same thing -- an outlined 10x6 ellipse at
 // target_x/target_y, yellow for a ground target (obj_player/Draw_0.gml:63-65). It leaves it
 // up permanently; here it goes away on arrival, and sits at this depth so characters walk
