@@ -479,6 +479,16 @@ function anim_paint(_parts) {
 /// deltas double screen-y going in and halve coming back, so a light reaches twice as far
 /// along x as along screen-y and the shadow of a ring of characters is a true circle on
 /// the iso ground. Stateless: recomputed every frame.
+/// Sign-preserving magnitude floor for the shadow width's across-axis component: the
+/// minimum cross-thickness a side-lit figure keeps instead of collapsing to a stick.
+/// The sign flip through zero is the one unavoidable seam (topology: the width must be
+/// east at both the north and south poles), parked at exactly east-west where the flip
+/// is a subtle vertical swap of an already-horizontal silhouette.
+function uw_floor(_c) {
+    static _m = 0.45;
+    return (_c >= 0) ? max(_c, _m) : min(_c, -_m);
+}
+
 function anim_light_shadow(_L, _gx, _gy) {
     var _dgx = _gx - _L.x;
     var _dgy = (_gy - _L.y) * 2;                     // screen y -> iso ground y
@@ -496,16 +506,17 @@ function anim_light_shadow(_L, _gx, _gy) {
         gx   : _gx,
         gy   : _gy,
         // Where a part's LATERAL offset (its distance east of the character's axis) goes
-        // in the shadow. Keeping it on the x axis works only while the shadow runs
-        // north-south; once the shadow swings east-west the width lies parallel to the
-        // axis, folds into the length, and the figure collapses to a stick however much
-        // the axis is tilted. This direction -- (|ay|, -ax) of the unit shadow axis --
-        // IS east-west for north/south shadows (so those keep their approved look,
-        // sword east casting east) and turns vertical for east-west shadows, laying the
-        // figure on its side with its true width across the axis. It is continuous at
-        // every angle and never vanishes, and the whole map stays affine: no gaps.
-        uwx  : abs(_ky) / _kl,
-        uwy  : -_kx / _kl,
+        // in the shadow. The TRUE billboard projection sends it due east, unchanged, at
+        // every light angle -- east stays east, no mirror, ever. Its one degeneracy:
+        // with the light due east/west the axis itself is horizontal, east lies along
+        // it, and the figure folds into a stick. So east is split into its along-axis
+        // and across-axis parts and ONLY the across part is floored: whenever
+        // |across| >= the floor this reconstructs east exactly (every approved angle is
+        // pixel-identical), and near east-west the floor supplies vertical thickness.
+        // (A first attempt aimed the whole width at (|ay|,-ax), which is anti-parallel
+        // to a NW/SE axis: the figure collapsed and skewed precisely on the diagonals.)
+        uwx  : sqr(_kx / _kl) + uw_floor(-_ky / _kl) * (-_ky / _kl),
+        uwy  : (_kx / _kl) * (_ky / _kl) + uw_floor(-_ky / _kl) * (_kx / _kl),
         // Brightness stamped into the shadow surface: full at the light, 0 at its edge.
         a255 : round(255 * (1 - _gd / _L.r))
         // There is deliberately NO lateral mirror at any light angle. The rig is a
