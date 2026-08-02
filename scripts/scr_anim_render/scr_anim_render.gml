@@ -385,8 +385,10 @@ function anim_build(_parts, _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
     // Ground shadows. The client pins the horse's pair to the DRAWN body halves, +25 in y
     // (obj_horse/Step_0.gml:963-969), and gives a humanoid an obj_shadow at its own x/y. A
     // huge depth just puts them at the back of this character's own paint order.
+    // The blob hands over to the cast-shadow system as lights get close: anim_blob_scale.
     var _shade = _look[$ "shadow"];
-    if (_shade != undefined) {
+    var _blob_a = (_shade != undefined) ? anim_blob_scale(_x, _y) : 0;
+    if (_shade != undefined && _blob_a > 0.02) {
         var _spec = _rig.shadow;
         for (var i = 0; i < array_length(_spec); i++) {
             var _s = _spec[i];
@@ -395,7 +397,7 @@ function anim_build(_parts, _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
             array_push(_parts, 1000000, _look.shadow_spr, _s.sub,
                 (_p < 0) ? _x : _parts[_p + PART.X],
                 ((_p < 0) ? _y : _parts[_p + PART.Y]) + _s.dy,
-                0, _s.sx, _s.sy, _shade, _s.alpha);
+                0, _s.sx, _s.sy, _shade, _s.alpha * _blob_a);
         }
     }
 
@@ -504,6 +506,11 @@ function anim_light_shadow(_L, _gx, _gy) {
     var _kx = (_dgx / _gd) * _s;
     var _ky = (_dgy / _gd) * 0.5 * _s;
     if (abs(_ky) < 0.35) _ky = (_ky < 0) ? -0.35 : 0.35;
+    // ...and capped above: a steep toward-camera shear stretches the figure's height
+    // bands APART, and where the front view is sparse (thin legs, the belly) the bands
+    // separate into detached stripes -- the shadow read as floating blobs with holes.
+    // Capping the slope keeps the bands overlapping into one grounded mass.
+    _ky = clamp(_ky, -0.55, 0.55);
     var _kl = sqrt(_kx * _kx + _ky * _ky);           // s > 0, so never zero
     return {
         kx   : _kx,
@@ -641,6 +648,23 @@ function anim_light_sheen(_parts, _gx, _gy) {
 /// working -- that, plus the parts being opaque on the surface, is what makes the shadow
 /// UNIFORM: overlapping parts (hair over torso over arm) all write the same grey instead
 /// of stacking translucent layers into blotches.
+/// How much of the ambient contact blob a character keeps: 1 in darkness, fading to 0 as
+/// the strongest light's attenuation rises. Where a light reaches, the cast shadow does
+/// the grounding, and the blob's oval sitting beside it read as two competing shadows --
+/// but a hard cutoff at the radius would pop, since the cast shadow is invisibly faint
+/// exactly at the edge. So the blob hands over smoothly.
+function anim_blob_scale(_x, _y) {
+    var _ls = global.demo_lights;
+    var _best = 0;
+    for (var i = 0; i < array_length(_ls); i++) {
+        var _L = _ls[i];
+        var _dgx = _x - _L.x, _dgy = (_y - _L.y) * 2;
+        var _gd = sqrt(_dgx * _dgx + _dgy * _dgy);
+        if (_gd < _L.r) _best = max(_best, 1 - _gd / _L.r);
+    }
+    return 1 - _best;
+}
+
 /// Stamp one character's silhouette for ONE light into that light's active surface.
 /// Shadows are kept per light so a pool can fade OTHER lights' shadows crossing it
 /// without erasing its own -- a character standing inside a pool blocks that pool's
