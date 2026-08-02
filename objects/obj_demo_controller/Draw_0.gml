@@ -59,6 +59,21 @@ if (global.anim_ready) {
     }
     with (obj_demo_skeleton) anim_shadow_char(rig, clip, play, x, y, direction, look, false);
     with (obj_demo_horse)    anim_shadow_pair(self);
+    // A silhouette lying across a light pool fades where that pool shines: subtract each
+    // pool's gradient from the stamped shadows before compositing. Sized to the BRIGHT
+    // CORE the glow drawing shows (about half the attenuation reach), not the full reach:
+    // a full-reach fade at high strength blanketed everything near any light and quietly
+    // erased whole shadows -- a shadow should fade as it crosses the visible pool, not
+    // vanish for being in the neighbourhood.
+    gpu_set_blendmode(bm_subtract);
+    for (var i = 0; i < array_length(global.demo_lights); i++) {
+        var _L2 = global.demo_lights[i];
+        var _fw = _L2.r * 0.55;
+        draw_ellipse_colour(_L2.x - _fw, _L2.y - _fw * 0.5,
+                            _L2.x + _fw, _L2.y + _fw * 0.5,
+                            make_colour_rgb(140, 140, 140), c_black, false);
+    }
+    gpu_set_blendmode(bm_normal);
     surface_reset_target();
     gpu_set_blendmode(bm_subtract);
     draw_surface_ext(shadow_surf, _x0, _y0, 1, 1, 0, make_colour_rgb(115, 115, 115), 1);

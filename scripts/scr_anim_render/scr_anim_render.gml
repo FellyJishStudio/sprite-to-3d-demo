@@ -141,7 +141,7 @@ function anim_mount_state(_rig, _dir) {
 /// Appends to `_parts` rather than drawing, so a mount and its rider can share one sorted
 /// list. Positions are absolute.
 function anim_build(_parts, _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
-                    _mount = undefined, _shadow = undefined) {
+                    _mount = undefined) {
     var _f    = anim_facing(_rig, _dir, _is_player);
     var _dcos = _f.dcos, _zsin = _f.zsin, _mir = _f.mirror, _down = _f.down;
     var _dat  = _clip.data;
@@ -269,18 +269,6 @@ function anim_build(_parts, _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
             var _pang = _dat[_r + ANIM_ANGLE] * _dcos;
             var _pxs  = _dat[_r + ANIM_XSCALE] * _mir * _scale;
             var _pys  = _dat[_r + ANIM_YSCALE] * _scale;
-            if (_shadow != undefined) {
-                var _ph = _shadow.gy - _py;
-                // Lateral axis mirrored about the character's own anchor when the shadow
-                // falls toward the camera (see anim_light_shadow.mx), then sheared out.
-                _px = _x + (_px - _x) * _shadow.mx + _shadow.kx * _ph;
-                _py  = _shadow.gy + _shadow.ky * _ph;
-                _pang = _shadow.lay;               // no next joint: lie along the shadow
-                // Rotated to `lay`, the sprite's height runs along the shadow and its
-                // width across it: stretch the length, mirror the width.
-                _pys *= _shadow.slen;
-                _pxs *= _shadow.mx;
-            }
             _start[c] = array_length(_parts);   // pin recorded: the push below is certain
             array_push(_parts,
                 _depth,
@@ -325,24 +313,6 @@ function anim_build(_parts, _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
         var _ex = _jx[_n - 1] + _ln * _dcos * dcos(_la) + (_zj - _zpen) * _zsin;
         var _ey = _jy[_n - 1] - _ln * dsin(_la);
 
-        // Shadow pass: lay every joint (and the tip) onto the ground BEFORE the bones aim
-        // at each other, so the same stretch that connects the standing figure connects
-        // its shadow. Shearing the finished sprites instead scatters them -- the anchors
-        // spread apart but the sprites stay bone-sized, and the silhouette tears.
-        // The lateral axis mirrors about the character's anchor when the shadow falls
-        // toward the camera (anim_light_shadow.mx), which is what puts the sword on the
-        // correct side of the silhouette.
-        if (_shadow != undefined) {
-            for (var i = 0; i < _n; i++) {
-                var _jh = _shadow.gy - _jy[i];
-                _jx[i] = _x + (_jx[i] - _x) * _shadow.mx + _shadow.kx * _jh;
-                _jy[i] = _shadow.gy + _shadow.ky * _jh;
-            }
-            var _th = _shadow.gy - _ey;
-            _ex = _x + (_ex - _x) * _shadow.mx + _shadow.kx * _th;
-            _ey = _shadow.gy + _shadow.ky * _th;
-        }
-
         if (c == _rig.armChain) {          // the chain a held item hangs off
             _has_tip  = true;
             _tip.x    = _ex;  _tip.y = _ey;  _tip.depth = _depth;
@@ -367,9 +337,7 @@ function anim_build(_parts, _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
                 _jy[i],
                 point_direction(_jx[i], _jy[i], _nx, _ny),
                 (_sw != 0) ? point_distance(_jx[i], _jy[i], _nx, _ny) / _sw : 1,
-                // The chain's lateral art axis is local y; a camera-ward shadow mirrors it.
-                _dat[_row[i] + ANIM_YSCALE] * _mir
-                    * ((_shadow == undefined) ? 1 : _shadow.mx),
+                _dat[_row[i] + ANIM_YSCALE] * _mir,
                 _col,
                 _dat[_row[i] + ANIM_ALPHA]);
         }
@@ -411,8 +379,7 @@ function anim_build(_parts, _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
     // Ground shadows. The client pins the horse's pair to the DRAWN body halves, +25 in y
     // (obj_horse/Step_0.gml:963-969), and gives a humanoid an obj_shadow at its own x/y. A
     // huge depth just puts them at the back of this character's own paint order.
-    // A cast-shadow pass emits none: a shadow does not cast a contact blob.
-    var _shade = (_shadow != undefined) ? undefined : _look[$ "shadow"];
+    var _shade = _look[$ "shadow"];
     if (_shade != undefined) {
         var _spec = _rig.shadow;
         for (var i = 0; i < array_length(_spec); i++) {
@@ -518,29 +485,103 @@ function anim_light_shadow(_L, _gx, _gy) {
     var _gd  = sqrt(_dgx * _dgx + _dgy * _dgy);
     if (_gd > _L.r || _gd < 1) return undefined;
     var _s  = min(_gd / _L.h, 2.2);                  // shadow length per pixel of height
-    var _kx = (_dgx / _gd) * _s;
-    var _ky = (_dgy / _gd) * 0.5 * _s;               // ground y -> screen y
     return {
-        kx   : _kx,
-        ky   : _ky,
+        kx   : (_dgx / _gd) * _s,
+        ky   : (_dgy / _gd) * 0.5 * _s,              // ground y -> screen y
         gy   : _gy,
-        // Longitudinal stretch for single bones: a chain stretches itself (dist/natural),
-        // but a lone sprite lying along the shadow must be scaled by the shear's length,
-        // or gaps open between it and its neighbours -- and near the light, where shadows
-        // are SHORT, it must compress the same way.
-        slen : sqrt(_kx * _kx + _ky * _ky),
         // Brightness stamped into the shadow surface: full at the light, 0 at its edge.
-        a255 : round(255 * (1 - _gd / _L.r)),
-        // The shear's orientation: its determinant is -ky, so a shadow falling TOWARD the
-        // camera (ky > 0) reverses the figure -- the light hits the character's back and
-        // projects it mirrored, sword landing on the other side of the silhouette. mx
-        // mirrors the lateral axis about the character's own anchor to reproduce that; a
-        // shadow falling away keeps the figure's handedness, like a slide projector.
-        mx   : (_ky > 0) ? -1 : 1,
-        // Single bones (body, head) have no next joint to stretch toward; they lie down
-        // along the shadow line instead. -90 maps the sprite's up-axis onto (kx, ky).
-        lay  : point_direction(0, 0, _kx, _ky) - 90
+        a255 : round(255 * (1 - _gd / _L.r))
+        // There is deliberately NO lateral mirror at any light angle. The rig is a
+        // billboard: its lateral axis IS the ground's east-west axis, and a planar
+        // projection maps east to east whichever way the shadow falls -- a sword pointing
+        // east casts an east-pointing shadow both toward and away from the camera. A
+        // toward-camera "mirror" was tried here and looked wrong on screen; do not
+        // reintroduce it from the screen-image-orientation argument (the shear's negative
+        // determinant), which is about the picture, not the world.
     };
+}
+
+/// Paint a built character as ONE sheared silhouette for one light, straight to the
+/// active target (the controller's shadow surface). The shadow transform
+///
+///     T(p) = (px + kx*(gy - py),  gy + ky*(gy - py))
+///
+/// is AFFINE in the part's screen position, so each part's drawn QUAD goes through T
+/// corner by corner (draw_sprite_pos). Affinity is the no-gaps guarantee: parts that
+/// touch standing up still touch sheared, whatever their angle -- the previous
+/// lie-down-and-stretch pass approximated this per part and opened seams on every
+/// diagonal one (the horse's neck). Colour comes from the fog the caller set.
+function anim_shadow_paint(_parts, _s) {
+    var _count = array_length(_parts);
+    var _kx = _s.kx, _ky = _s.ky, _gy = _s.gy;
+    for (var i = 0; i < _count; i += PART.SIZE) {
+        if (_parts[i + PART.DEPTH] >= 900000) continue;      // contact blobs cast nothing
+        var _al = _parts[i + PART.ALPHA];
+        if (_al <= 0) continue;                              // hidden stays hidden
+        var _spr = _parts[i + PART.SPR];
+        if (_spr == undefined || !sprite_exists(_spr)) continue;
+        var _sub = _parts[i + PART.SUB];
+        var _px = _parts[i + PART.X],  _py = _parts[i + PART.Y];
+        var _xs = _parts[i + PART.XS], _ys = _parts[i + PART.YS];
+        var _ca = dcos(_parts[i + PART.ANG]), _sa = dsin(_parts[i + PART.ANG]);
+        // NOT draw_sprite_pos: texture pages auto-crop sprites, and that function maps
+        // the TRIMMED texture onto the full-size quad -- every cropped part smears. The
+        // quad here is the trimmed rect itself (uvs[4..7]), in local pixels around the
+        // origin, scaled and rotated exactly as draw_sprite_ext would place it, then
+        // sheared corner by corner. Textured primitives also honour the fog the caller
+        // set, which draw_sprite_pos does not.
+        var _uv = sprite_get_uvs(_spr, _sub);
+        var _u0 = (_uv[4] - sprite_get_xoffset(_spr)) * _xs;
+        var _v0 = (_uv[5] - sprite_get_yoffset(_spr)) * _ys;
+        var _u1 = _u0 + sprite_get_width(_spr)  * _uv[6] * _xs;
+        var _v1 = _v0 + sprite_get_height(_spr) * _uv[7] * _ys;
+        var _x1 = _px + _u0 * _ca + _v0 * _sa,  _y1 = _py - _u0 * _sa + _v0 * _ca;
+        var _x2 = _px + _u1 * _ca + _v0 * _sa,  _y2 = _py - _u1 * _sa + _v0 * _ca;
+        var _x3 = _px + _u1 * _ca + _v1 * _sa,  _y3 = _py - _u1 * _sa + _v1 * _ca;
+        var _x4 = _px + _u0 * _ca + _v1 * _sa,  _y4 = _py - _u0 * _sa + _v1 * _ca;
+        draw_primitive_begin_texture(pr_trianglestrip, sprite_get_texture(_spr, _sub));
+        draw_vertex_texture_colour(_x1 + _kx * (_gy - _y1), _gy + _ky * (_gy - _y1),
+                                   _uv[0], _uv[1], c_white, _al);
+        draw_vertex_texture_colour(_x2 + _kx * (_gy - _y2), _gy + _ky * (_gy - _y2),
+                                   _uv[2], _uv[1], c_white, _al);
+        draw_vertex_texture_colour(_x4 + _kx * (_gy - _y4), _gy + _ky * (_gy - _y4),
+                                   _uv[0], _uv[3], c_white, _al);
+        draw_vertex_texture_colour(_x3 + _kx * (_gy - _y3), _gy + _ky * (_gy - _y3),
+                                   _uv[2], _uv[3], c_white, _al);
+        draw_primitive_end();
+    }
+}
+
+/// Additive warm sheen where a light hits a character -- quadratic in proximity, so it
+/// only really shines up close. The copy is offset a touch TOWARD the light, so the
+/// bright spill sits on the lit side of every part.
+function anim_light_sheen(_parts, _gx, _gy) {
+    var _lights = global.demo_lights;
+    var _nl = array_length(_lights);
+    for (var l = 0; l < _nl; l++) {
+        var _L = _lights[l];
+        var _dgx = _gx - _L.x;
+        var _dgy = (_gy - _L.y) * 2;                 // iso 1:2 metric, as everywhere
+        var _gd  = sqrt(_dgx * _dgx + _dgy * _dgy);
+        if (_gd > _L.r || _gd < 1) continue;
+        var _t = 1 - _gd / _L.r;
+        var _a = 0.34 * _t * _t;
+        if (_a < 0.03) continue;
+        var _ox = -_dgx / _gd * 1.5;
+        var _oy = -_dgy * 0.5 / _gd * 1.5;
+        gpu_set_blendmode(bm_add);
+        var _count = array_length(_parts);
+        for (var i = 0; i < _count; i += PART.SIZE) {
+            if (_parts[i + PART.DEPTH] >= 900000) continue;      // not the contact blob
+            var _spr = _parts[i + PART.SPR];
+            if (_spr == undefined || !sprite_exists(_spr)) continue;
+            draw_sprite_ext(_spr, _parts[i + PART.SUB],
+                _parts[i + PART.X] + _ox, _parts[i + PART.Y] + _oy,
+                _parts[i + PART.XS], _parts[i + PART.YS], _parts[i + PART.ANG],
+                make_colour_rgb(255, 214, 140), _a * _parts[i + PART.ALPHA]);
+        }
+        gpu_set_blendmode(bm_normal);
+    }
 }
 
 /// Stamp one character's cast shadows into the ACTIVE shadow surface, one silhouette per
@@ -553,13 +594,15 @@ function anim_light_shadow(_L, _gx, _gy) {
 /// of stacking translucent layers into blotches.
 function anim_shadow_char(_rig, _clip, _play, _x, _y, _dir, _look, _is_player) {
     var _nl = array_length(global.demo_lights);
+    if (_nl == 0) return;
+    // ONE ordinary build serves every light: the shear happens per quad in
+    // anim_shadow_paint, not in the pose.
+    var _p = anim_build(anim_scratch(), _rig, _clip, _play, _x, _y, _dir, _look, _is_player);
     for (var l = 0; l < _nl; l++) {
         var _s = anim_light_shadow(global.demo_lights[l], _x, _y);
         if (_s == undefined) continue;
-        var _p = anim_build(anim_scratch(), _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
-                            undefined, _s);
         gpu_set_fog(true, make_colour_rgb(_s.a255, _s.a255, _s.a255), 0, 0);
-        anim_paint(_p);
+        anim_shadow_paint(_p, _s);
     }
     gpu_set_fog(false, c_black, 0, 0);
 }
@@ -568,19 +611,19 @@ function anim_shadow_char(_rig, _clip, _play, _x, _y, _dir, _look, _is_player) {
 /// so the pair stamps as one silhouette.
 function anim_shadow_pair(_h) {
     var _nl = array_length(global.demo_lights);
+    if (_nl == 0) return;
+    var _p = anim_scratch();
+    if (_h.rider != noone) {
+        var _r = _h.rider;
+        anim_build(_p, _r.rig, _r.clip, _r.play, _r.x, _r.y, _r.direction, _r.look, true,
+                   anim_mount_state(_h.rig, _h.direction));
+    }
+    anim_build(_p, _h.rig, _h.clip, _h.play, _h.x, _h.y, _h.direction, _h.look, false);
     for (var l = 0; l < _nl; l++) {
         var _s = anim_light_shadow(global.demo_lights[l], _h.x, _h.y);
         if (_s == undefined) continue;
-        var _p = anim_scratch();
-        if (_h.rider != noone) {
-            var _r = _h.rider;
-            anim_build(_p, _r.rig, _r.clip, _r.play, _r.x, _r.y, _r.direction, _r.look, true,
-                       anim_mount_state(_h.rig, _h.direction), _s);
-        }
-        anim_build(_p, _h.rig, _h.clip, _h.play, _h.x, _h.y, _h.direction, _h.look, false,
-                   undefined, _s);
         gpu_set_fog(true, make_colour_rgb(_s.a255, _s.a255, _s.a255), 0, 0);
-        anim_paint(_p);
+        anim_shadow_paint(_p, _s);
     }
     gpu_set_fog(false, c_black, 0, 0);
 }
@@ -595,9 +638,12 @@ function anim_scratch() {
     return _s;
 }
 
-/// Draw one character on its own. Its cast shadows are NOT drawn here: the controller's
-/// shadow layer stamps every character's silhouettes into one surface before any
-/// character draws (see anim_shadow_char), so shadows sit under everyone and stay uniform.
+/// Draw one character on its own, plus the warm sheen of any light close to it. Its cast
+/// shadows are NOT drawn here: the controller's shadow layer stamps every character's
+/// silhouettes into one surface before any character draws (see anim_shadow_char), so
+/// shadows sit under everyone and stay uniform.
 function anim_draw(_rig, _clip, _play, _x, _y, _dir, _look, _is_player) {
-    anim_paint(anim_build(anim_scratch(), _rig, _clip, _play, _x, _y, _dir, _look, _is_player));
+    var _p = anim_build(anim_scratch(), _rig, _clip, _play, _x, _y, _dir, _look, _is_player);
+    anim_paint(_p);
+    anim_light_sheen(_p, _x, _y);
 }

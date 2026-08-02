@@ -16,5 +16,6 @@ if (rider != noone) {
 anim_build(_parts, rig, clip, play, x, y, direction, look, false);
 
 anim_paint(_parts);
+anim_light_sheen(_parts, x, y);     // the pair catches the warm side-light together
 // Cast shadows are stamped by the controller's shadow layer (anim_shadow_pair), which
 // runs before any character draws.
