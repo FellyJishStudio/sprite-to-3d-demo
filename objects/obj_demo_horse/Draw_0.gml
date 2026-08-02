@@ -8,13 +8,13 @@
 /// rig's two bases, using the offsets in its own `mount` block.
 if (!anim_on_screen(x, y)) exit;
 
-var _parts = [];
+var _parts = anim_scratch();
 
 if (rider != noone) {
     var _r = rider;
-    anim_build(_parts, _r.rig, global.clips[$ _r.clip], _r.play,
+    anim_build(_parts, _r.rig, _r.clip, _r.play,
                _r.x, _r.y, _r.direction, _r.look, true, anim_mount_state(rig, direction));
 }
-anim_build(_parts, rig, global.clips[$ clip], play, x, y, direction, look, false);
+anim_build(_parts, rig, clip, play, x, y, direction, look, false);
 
 anim_paint(_parts);

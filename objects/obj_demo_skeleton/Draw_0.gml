@@ -1,1 +1,1 @@
-anim_draw(rig, global.clips[$ clip], play, x, y, direction, look, false);
+anim_draw(rig, clip, play, x, y, direction, look, false);

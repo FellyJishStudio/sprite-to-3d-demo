@@ -11,5 +11,5 @@ if (rider == noone) {
 
 // Gait threshold is the midpoint between walk and run speed (obj_horse/Step_0.gml:7, :636).
 clip  = (speed <= 0.1) ? rig.gait.idle : ((speed >= 2.2) ? rig.gait.run : rig.gait.walk);
-play += global.clips[$ clip].speed / game_get_speed(gamespeed_fps);
+play += clip.speed / game_get_speed(gamespeed_fps);
 depth = -y * 100;

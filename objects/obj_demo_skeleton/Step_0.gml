@@ -14,5 +14,5 @@ if (_p != noone && point_distance(x, y, _p.x, _p.y) < 220) {
 x = clamp(x, 16, room_width  - 16);
 y = clamp(y, 16, room_height - 16);
 
-play += global.clips[$ clip].speed / game_get_speed(gamespeed_fps);
+play += clip.speed / game_get_speed(gamespeed_fps);
 depth = -y * 100;

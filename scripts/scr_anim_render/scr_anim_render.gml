@@ -49,27 +49,32 @@ function anim_facing(_rig, _dir, _is_player) {
     var _skew = point_direction(0, 0, dcos(_raw) * 0.2, -dsin(_raw) * 0.6);
     var _dep  = _is_player ? _raw : _skew;
 
-    return {
-        raw    : _raw,
-        skew   : _skew,
-        dep    : _dep,
-        dcos   : dcos(_dep),
-        mirror : (_raw > 90 && _raw < 270) ? -1 : 1,
-        // Which band counts as "facing away" is per rig, and the rigs genuinely disagree.
-        down   : !(_skew < _rig.faceBand[1] && _skew > _rig.faceBand[0]),
-        dirDep : sign(dcos(round(_dep / 45) * 45)) + ((_dep < 135 && _dep > 45) ? 1 : 0),
-        left   : (_dep < 270 && _dep > 90),
-        up     : (_dep > 30 && _dep < 150),
-        right  : (_skew >= 270 || _skew < 90)
-    };
+    // One shared struct, overwritten by every call -- valid until the next anim_facing,
+    // anywhere. Every caller reads it out before another call can happen; nothing may
+    // store it. This is the render loop's hottest allocation site, once per character
+    // per frame, which is why it is scratch and not a fresh struct.
+    static _f = { raw:0, skew:0, dep:0, dcos:0, mirror:0, down:false, dirDep:0,
+                  left:false, up:false, right:false };
+    _f.raw    = _raw;
+    _f.skew   = _skew;
+    _f.dep    = _dep;
+    _f.dcos   = dcos(_dep);
+    _f.mirror = (_raw > 90 && _raw < 270) ? -1 : 1;
+    // Which band counts as "facing away" is per rig, and the rigs genuinely disagree.
+    _f.down   = !(_skew < _rig.faceBand[1] && _skew > _rig.faceBand[0]);
+    _f.dirDep = sign(dcos(round(_dep / 45) * 45)) + ((_dep < 135 && _dep > 45) ? 1 : 0);
+    _f.left   = (_dep < 270 && _dep > 90);
+    _f.up     = (_dep > 30 && _dep < 150);
+    _f.right  = (_skew >= 270 || _skew < 90);
+    return _f;
 }
 
 /// Sub-image. Frame 1 on these sprites is the BACK-facing variant, not an animation frame,
 /// except on the bones a rig lists in `subImageRule.steepBand`, which flip on a band of the
-/// skewed direction instead.
-function anim_sub(_bone, _band, _steep, _back) {
+/// skewed direction instead. Membership was resolved to `steep_band` at load.
+function anim_sub(_bone, _steep, _back) {
     if (_bone.frames <= 1) return 0;
-    if (_band != undefined && array_contains(_band, _bone.name)) return _steep ? 1 : 0;
+    if (_bone.steep_band) return _steep ? 1 : 0;
     return _back;
 }
 
@@ -82,10 +87,11 @@ function anim_sub(_bone, _band, _steep, _back) {
 ///   spine        y - y_adjust/2 - 1    half tilt AND the step        (:812)
 ///   far half     y - 1                 the step only                 (:801-811)
 ///   tail         y                     neither, in either branch     (:803, :845)
-function anim_iso(_iso, _name, _iso_y, _down) {
-    if (array_contains(_iso.front, _name)) return -_iso_y;
-    var _dy = array_contains(_iso.half, _name) ? -0.5 * _iso_y : 0;
-    if (_down && !array_contains(_iso.flat, _name)) _dy -= 1;
+/// The name-list scans became the per-bone iso_cls / iso_flat flags at load.
+function anim_iso(_cls, _flat, _iso_y, _down) {
+    if (_cls == 2) return -_iso_y;
+    var _dy = (_cls == 1) ? -0.5 * _iso_y : 0;
+    if (_down && !_flat) _dy -= 1;
     return _dy;
 }
 
@@ -141,7 +147,10 @@ function anim_build(_parts, _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
     var _dat  = _clip.data;
     var _rows = _clip.row;
     var _at   = anim_frame_base(_clip, _play);   // index of this frame's first float
-    var _tip   = undefined;   // synthesized right-arm tip, for the sword
+    // Synthesized right-arm tip, for the sword. Scratch, like everything else here: it is
+    // built for every character with an arm chain, sword or not.
+    static _tip = { x:0, y:0, depth:0, ang:0 };
+    var _has_tip = false;
     var _base  = array_length(_parts);            // where this character's parts start
 
     var _iso = _rig.iso, _iso_y = 0;
@@ -170,13 +179,22 @@ function anim_build(_parts, _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
     if (_mounted && _mount.squash) _dcos = dcos(_f.skew);
 
     // Bones whose sub-image follows a rig-specific steep band instead of facing_down.
-    var _rule = _rig.steep, _band = undefined, _steep = false;
+    var _rule = _rig.steep, _steep = false;
     if (_rule != undefined) {
-        _band  = _rule.steepBand;
         _steep = (_f.skew > _rule.band[0] && _f.skew < _rule.band[1])
               || (_f.skew > 180 + _rule.band[0] && _f.skew < 180 + _rule.band[1]);
     }
     var _back = _down ? 0 : 1;    // frame 1 is the BACK-facing art, not an animation frame
+
+    // Resolve each tint slot's colour once per character, not once per bone. Reading from
+    // the look struct HERE, every frame, is what keeps runtime slot mutation working --
+    // Step flips look.sword and look.shadow live, so colours must never be captured
+    // anywhere longer-lived than this call.
+    static _cols = [];
+    var _tn  = _rig.tintNames;
+    var _ntn = array_length(_tn);
+    array_resize(_cols, _ntn);
+    for (var t = 0; t < _ntn; t++) _cols[t] = _look[$ _tn[t]];
 
     // The sword arm is clamped in front of the head when facing left, so the head's depth
     // has to be known before any chain is placed.
@@ -185,7 +203,13 @@ function anim_build(_parts, _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
 
     var _chains = _rig.chain;
     var _nc     = array_length(_chains);
-    var _start  = array_create(_nc, -1);   // where each chain's parts begin, for the pins
+    // Workspaces, reused across calls rather than allocated per character per frame --
+    // with hundreds of characters the per-frame garbage was the measurable cost. All of
+    // them are consumed before this function returns, and anim_build is never reentrant
+    // (a mount and its rider are built one after the other, not inside each other).
+    static _start = [];                    // where each chain's parts begin, for the pins
+    array_resize(_start, _nc);
+    for (var i = 0; i < _nc; i++) _start[i] = -1;
     for (var c = 0; c < _nc; c++) {
         var _ch = _chains[c];
         var _bs = _ch.bones;
@@ -227,20 +251,20 @@ function anim_build(_parts, _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
             // joint, so there is no dist/naturalLength stretch, the angle is the baked
             // angle squashed by cos(direction), and the mirror lives on X, not Y.
             var _m   = _bs[0];
-            var _col = _look[$ _m.tint];        // per BONE: the hands are skin, not sleeve
+            var _col = _cols[_m.tintIdx];       // per BONE: the hands are skin, not sleeve
             if (_col == undefined) continue;
             var _r = _at + _rows[_m.slot];
             _start[c] = array_length(_parts);   // pin recorded: the push below is certain
             array_push(_parts,
                 _depth,
                 _m.sprite,
-                anim_sub(_m, _band, _steep, _back),
+                anim_sub(_m, _steep, _back),
                 // X foreshortened by cos(direction). The armature SCALE reaches the sprite
                 // only, never the joint position -- multiplying the position by it drags
                 // the part toward the origin, which once sank the head into the torso.
                 _x + _dat[_r + ANIM_X] * _dcos + _ox,
                 _y + _dat[_r + ANIM_Y] + _oy
-                    + ((_iso == undefined) ? 0 : anim_iso(_iso, _m.name, _iso_y, _down)),
+                    + ((_iso == undefined) ? 0 : anim_iso(_m.iso_cls, _m.iso_flat, _iso_y, _down)),
                 _dat[_r + ANIM_ANGLE] * _dcos,
                 _dat[_r + ANIM_XSCALE] * _mir * _scale,
                 _dat[_r + ANIM_YSCALE] * _scale,
@@ -251,14 +275,15 @@ function anim_build(_parts, _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
 
         // MULTI-BONE CHAIN. Project every joint first: each bone sprite has to know where
         // the next one starts.
-        var _jx = array_create(_n), _jy = array_create(_n), _row = array_create(_n);
+        static _jx = []; static _jy = []; static _row = [];
+        array_resize(_jx, _n); array_resize(_jy, _n); array_resize(_row, _n);
         for (var i = 0; i < _n; i++) {
             var _r2 = _at + _rows[_bs[i].slot];
             _row[i] = _r2;
             _jx[i] = _x + _dat[_r2 + ANIM_X] * _dcos + _ox;
             _jy[i] = _y + _dat[_r2 + ANIM_Y] + _oy
                    + ((_iso == undefined) ? 0
-                      : anim_iso(_iso, _bs[i].name, _iso_y, _down));
+                      : anim_iso(_bs[i].iso_cls, _bs[i].iso_flat, _iso_y, _down));
         }
 
         // The tip is synthesized from the last bone's own length and baked angle -- note
@@ -269,8 +294,9 @@ function anim_build(_parts, _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
         var _ey = _jy[_n - 1] - _ln * dsin(_la);
 
         if (c == _rig.armChain) {          // the chain a held item hangs off
-            _tip = { x : _ex, y : _ey, depth : _depth,
-                     ang : point_direction(_jx[_n - 1], _jy[_n - 1], _ex, _ey) };
+            _has_tip  = true;
+            _tip.x    = _ex;  _tip.y = _ey;  _tip.depth = _depth;
+            _tip.ang  = point_direction(_jx[_n - 1], _jy[_n - 1], _ex, _ey);
         }
         // Facing the camera: root over tip. Facing away: reversed, so the shoulder covers
         // the hand. A chain shares one depth, so this is only about emission order.
@@ -280,13 +306,13 @@ function anim_build(_parts, _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
             var _nx = (i == _n - 1) ? _ex : _jx[i + 1];
             var _ny = (i == _n - 1) ? _ey : _jy[i + 1];
             var _m   = _bs[i];
-            var _col = _look[$ _m.tint];
+            var _col = _cols[_m.tintIdx];
             if (_col == undefined) continue;
             var _sw  = _m.len * _dat[_row[i] + ANIM_XSCALE];
             array_push(_parts,
                 _depth,
                 _m.sprite,
-                anim_sub(_m, _band, _steep, _back),
+                anim_sub(_m, _steep, _back),
                 _jx[i],
                 _jy[i],
                 point_direction(_jx[i], _jy[i], _nx, _ny),
@@ -321,7 +347,7 @@ function anim_build(_parts, _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
     }
 
     var _sword = _look[$ "sword"];
-    if (_tip != undefined && _sword != undefined) {
+    if (_has_tip && _sword != undefined) {
         // The wrist twist fades out as the character turns toward or away from camera.
         var _ang = _tip.ang + 90 * _mir * abs(dcos(round(_f.dep / 6) * 6 + 20));
         var _sx  = 1;
@@ -418,8 +444,18 @@ function anim_paint(_parts) {
     }
 }
 
+/// The shared parts list, emptied and handed out. One character (or one mount + rider
+/// pair) builds into it and paints it before the next asks for it, so a single array
+/// serves every draw this frame instead of hundreds of fresh ones feeding the GC.
+/// Valid until the next anim_scratch() call -- build and paint it before then.
+function anim_scratch() {
+    static _s = [];
+    array_resize(_s, 0);
+    return _s;
+}
+
 /// Draw one character on its own. Off-camera characters do no work at all.
 function anim_draw(_rig, _clip, _play, _x, _y, _dir, _look, _is_player) {
     if (!anim_on_screen(_x, _y)) return;
-    anim_paint(anim_build([], _rig, _clip, _play, _x, _y, _dir, _look, _is_player));
+    anim_paint(anim_build(anim_scratch(), _rig, _clip, _play, _x, _y, _dir, _look, _is_player));
 }

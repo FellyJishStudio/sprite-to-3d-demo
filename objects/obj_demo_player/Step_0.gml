@@ -60,4 +60,4 @@ y = clamp(y, 1, room_height);
 look.sword  = sword_on ? c_white : undefined;
 look.shadow = (mount != noone) ? undefined : c_white;   // the mount casts its own
 
-play += global.clips[$ clip].speed / game_get_speed(gamespeed_fps);
+play += clip.speed / game_get_speed(gamespeed_fps);

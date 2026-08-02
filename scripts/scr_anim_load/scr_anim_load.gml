@@ -91,6 +91,11 @@ function anim_rig_load(_id) {
 
     var _meta = {};       // bone id -> draw info
     _r.boneNames = [];    // slot -> the name the .bin indexes by
+    // Tint slots become indices here: the renderer resolves each slot's colour once per
+    // character per frame instead of hashing a string once per BONE per frame. The list
+    // is tiny (five names on the humanoid, one on an animal).
+    _r.tintNames = [];
+    var _tidx = {};       // name -> index, load-time only
     for (var i = 0; i < array_length(_r.bones); i++) {
         var _b = _r.bones[i];
         var _s = is_struct(_skin) ? _skin[$ _b.id] : undefined;   // skin overrides art
@@ -100,13 +105,25 @@ function anim_rig_load(_id) {
         // silently draws nothing. Say which sprite instead.
         var _spr = asset_get_index(_s.sprite);
         if (_spr < 0 && global.anim_error == "") global.anim_error = "sprite " + string(_s.sprite);
+        var _tn = _demo.tint[$ _b.id] ?? "plain";     // per BONE: the hands are not sleeve
+        var _ti = _tidx[$ _tn];
+        if (_ti == undefined) {
+            _ti = array_length(_r.tintNames);
+            _tidx[$ _tn] = _ti;
+            array_push(_r.tintNames, _tn);
+        }
         _meta[$ _b.id] = {
-            name   : _b.name,
-            slot   : i,                          // index into a clip's row table
-            sprite : _spr,
-            frames : _s.spriteFrames,
-            len    : _s.naturalLength,
-            tint   : _demo.tint[$ _b.id] ?? "plain"   // per BONE: the hands are not sleeve
+            name    : _b.name,
+            slot    : i,                         // index into a clip's row table
+            sprite  : _spr,
+            frames  : _s.spriteFrames,
+            len     : _s.naturalLength,
+            tintIdx : _ti,
+            // Rule membership, resolved below once the rule lists exist. The renderer
+            // reads these flags per bone per frame; the name scans happen only here.
+            iso_cls    : 0,       // 2 = front half (full tilt), 1 = spine (half), 0 = rest
+            iso_flat   : false,   // exempt from the facing-down -1 step
+            steep_band : false    // sub-image follows the steep band, not facing_down
         };
         _r.boneNames[i] = _b.name;
     }
@@ -158,6 +175,22 @@ function anim_rig_load(_id) {
     // Corrections to the rig, from the demo file so the rig copy stays untouched.
     if (_r.iso != undefined) _r.iso.flat = is_struct(_demo[$ "iso"])
         ? (_demo.iso[$ "flat"] ?? []) : [];
+
+    // Resolve the name-list rules into the per-bone flags declared above. Bones that share
+    // a name (duplicate source bones) all take the rule, exactly as the name scan did.
+    var _sband = (_r.steep != undefined) ? _r.steep.steepBand : undefined;
+    for (var i = 0; i < array_length(_r.chain); i++) {
+        var _cb = _r.chain[i].bones;
+        for (var j = 0; j < array_length(_cb); j++) {
+            var _m2 = _cb[j];
+            if (_r.iso != undefined) {
+                _m2.iso_cls  = array_contains(_r.iso.front, _m2.name) ? 2
+                             : (array_contains(_r.iso.half,  _m2.name) ? 1 : 0);
+                _m2.iso_flat = array_contains(_r.iso.flat, _m2.name);
+            }
+            if (_sband != undefined) _m2.steep_band = array_contains(_sband, _m2.name);
+        }
+    }
 
     // Ground shadows and head attachments, each pinned to a drawn chain (or, for a shadow
     // with a null chain, to the instance origin). Chain ids are resolved to indices here so
@@ -297,6 +330,15 @@ function anim_async() {
         var _entry = _m[i];
         if (global.rigs[$ _entry.rig] == undefined) anim_rig_load(_entry.rig);
         anim_clip_load(_entry);
+    }
+    // Gait names -> clip structs, now that every clip exists. An instance's `clip` is a
+    // struct from here on: Step reads clip.speed and Draw hands it straight to anim_build,
+    // with no per-frame global.clips hash on either path.
+    var _rn = variable_struct_get_names(global.rigs);
+    for (var i = 0; i < array_length(_rn); i++) {
+        var _g  = global.rigs[$ _rn[i]].gait;
+        var _gn = variable_struct_get_names(_g);
+        for (var j = 0; j < array_length(_gn); j++) _g[$ _gn[j]] = global.clips[$ _g[$ _gn[j]]];
     }
     var _names = variable_struct_get_names(global.anim_files);
     for (var i = 0; i < array_length(_names); i++) buffer_delete(global.anim_files[$ _names[i]]);
