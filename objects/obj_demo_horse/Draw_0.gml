@@ -15,4 +15,5 @@ if (rider != noone) {
 }
 anim_build(_parts, rig, clip, play, x, y, direction, look, false);
 
+anim_cast_shadows(_parts, x, y);    // horse and rider shadow as one silhouette
 anim_paint(_parts);

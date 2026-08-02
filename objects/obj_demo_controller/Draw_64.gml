@@ -29,7 +29,7 @@ for (var i = 0; i < array_length(buttons); i++) {
 }
 
 draw_text(16 + array_length(buttons) * 92, 46,
-          "click to move   WASD/Shift also move   wheel zooms   Space sword   R shuffle look");
+          "click to move   WASD/Shift also move   wheel zooms   Space sword   R shuffle look   L light");
 draw_text(16 + array_length(buttons) * 92, 62,
           "right-click or hold left on a horse to ride");
 

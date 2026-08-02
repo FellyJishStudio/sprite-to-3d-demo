@@ -24,6 +24,19 @@ while (_c <= _y1 + _x1 * 0.5) {
     _c += GRID_TILE;
 }
 
+// Light pools: a 2:1 ellipse per light -- a circle of reach on the 1:2 isometric ground.
+// Additive blending with a centre-to-black gradient is a free radial falloff: black adds
+// nothing, so there is no visible rim. The bright dot is the lamp itself.
+gpu_set_blendmode(bm_add);
+for (var i = 0; i < array_length(global.demo_lights); i++) {
+    var _L = global.demo_lights[i];
+    var _w = _L.r * 0.5;
+    draw_ellipse_colour(_L.x - _w, _L.y - _w * 0.5, _L.x + _w, _L.y + _w * 0.5,
+                        make_colour_rgb(84, 66, 28), c_black, false);
+    draw_circle_colour(_L.x, _L.y - 2, 4, make_colour_rgb(255, 236, 170), c_black, false);
+}
+gpu_set_blendmode(bm_normal);
+
 // Walk destination. The client draws the same thing -- an outlined 10x6 ellipse at
 // target_x/target_y, yellow for a ground target (obj_player/Draw_0.gml:63-65). It leaves it
 // up permanently; here it goes away on arrival, and sits at this depth so characters walk

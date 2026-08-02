@@ -11,7 +11,11 @@ if (!spawned) {
     instance_create_depth(room_width / 2 + 240, room_height / 2 - 60, 0, obj_demo_horse);
     view_object[0] = obj_demo_player;      // the room's follow target, now that it exists
     demo_spawn(3);
+    demo_add_light(room_width / 2 - 150, room_height / 2 - 90);
+    demo_add_light(room_width / 2 + 260, room_height / 2 + 130);
 }
+
+if (keyboard_check_pressed(ord("L"))) demo_add_light(mouse_x, mouse_y);
 
 var _gx = device_mouse_x_to_gui(0), _gy = device_mouse_y_to_gui(0);
 

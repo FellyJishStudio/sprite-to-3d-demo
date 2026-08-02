@@ -6,6 +6,15 @@ randomize();
 
 spawned = false;
 
+// Point lights: each casts an animated shadow of every character in range (see
+// anim_cast_shadows) and paints a 2:1 isometric glow pool on the ground. `h` is the
+// light's height above the ground plane -- what shadow length is projected against.
+global.demo_lights = [];
+function demo_add_light(_x, _y) {
+    if (array_length(global.demo_lights) >= 6) return;      // enough for a demo room
+    array_push(global.demo_lights, { x: _x, y: _y, h: 60, r: 340 });
+}
+
 depth       = 20000;          // the ground grid draws behind every character
 // Numeric second element = spawner action; the string "wave" starts the player's wave.
 buttons     = [["+10", 10], ["+50", 50], ["-10", -10], ["reset", 0], ["wave", "wave"]];

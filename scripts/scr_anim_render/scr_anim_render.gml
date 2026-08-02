@@ -455,6 +455,52 @@ function anim_paint(_parts) {
     }
 }
 
+/// Append cast-shadow copies of a built character to its own parts list, one set per
+/// in-range light. The shadow is the ANIMATED pose, not a blob: every bone part is
+/// re-emitted black at its planar projection onto the ground, so the silhouette waves,
+/// walks and rides exactly as the character does, one shear per light.
+///
+/// The projection is the textbook point-light one. A part at height h above the ground
+/// anchor (_gx, _gy) lands at
+///
+///     offset = (part - light) * h / (lightHeight - h)
+///
+/// and the ISOMETRIC 1:2 GROUND cancels out of that offset entirely: converting a screen
+/// delta to ground space doubles y, projecting scales it, converting back halves it
+/// again. So the sheared positions use screen deltas directly -- where the 1:2 world DOES
+/// appear is the attenuation metric (a light reaches twice as far along x as along
+/// screen-y, so ground distance doubles dy) and the 2:1 glow pools the controller draws.
+///
+/// Stateless: recomputed from the parts list every frame, nothing cached, nothing keyed.
+function anim_cast_shadows(_parts, _gx, _gy) {
+    var _lights = global.demo_lights;
+    var _nl = array_length(_lights);
+    if (_nl == 0) return;
+    var _count = array_length(_parts);      // snapshot: shadows must not shadow shadows
+    for (var l = 0; l < _nl; l++) {
+        var _L  = _lights[l];
+        var _dy = (_gy - _L.y) * 2;                        // iso 1:2: true ground distance
+        var _gd = sqrt(sqr(_gx - _L.x) + sqr(_dy));
+        if (_gd > _L.r) continue;
+        var _a = 0.38 * (1 - _gd / _L.r);                  // fade toward the light's edge
+        for (var i = 0; i < _count; i += PART.SIZE) {
+            if (_parts[i + PART.DEPTH] >= 900000) continue;     // contact blobs cast nothing
+            var _h = _gy - _parts[i + PART.Y];                  // height above the ground
+            if (_h <= 1) continue;
+            // Clamped so a part near the light's own height cannot shoot to infinity.
+            var _f = _h / max(_L.h - _h, 18);
+            array_push(_parts,
+                999500 - l,                                // on the ground, over the blob
+                _parts[i + PART.SPR], _parts[i + PART.SUB],
+                _parts[i + PART.X] + (_parts[i + PART.X] - _L.x) * _f,
+                _gy + (_gy - _L.y) * _f,
+                _parts[i + PART.ANG],
+                _parts[i + PART.XS], _parts[i + PART.YS],
+                c_black, _a * _parts[i + PART.ALPHA]);
+        }
+    }
+}
+
 /// The shared parts list, emptied and handed out. One character (or one mount + rider
 /// pair) builds into it and paints it before the next asks for it, so a single array
 /// serves every draw this frame instead of hundreds of fresh ones feeding the GC.
@@ -467,5 +513,7 @@ function anim_scratch() {
 
 /// Draw one character on its own.
 function anim_draw(_rig, _clip, _play, _x, _y, _dir, _look, _is_player) {
-    anim_paint(anim_build(anim_scratch(), _rig, _clip, _play, _x, _y, _dir, _look, _is_player));
+    var _p = anim_build(anim_scratch(), _rig, _clip, _play, _x, _y, _dir, _look, _is_player);
+    anim_cast_shadows(_p, _x, _y);
+    anim_paint(_p);
 }
