@@ -487,7 +487,14 @@ function anim_light_shadow(_L, _gx, _gy) {
     var _s  = min(_gd / _L.h, 2.2);                  // shadow length per pixel of height
     return {
         kx   : (_dgx / _gd) * _s,
-        ky   : (_dgy / _gd) * 0.5 * _s,              // ground y -> screen y
+        // ground y -> screen y, PLUS a constant camera-ward tilt. The tilt is the 1:2
+        // ground's own inclination showing up in the projection, and it is what keeps a
+        // side-lit figure figure-shaped: with the light due east or west the directional
+        // term is ~0 and a pure shear would collapse the whole character onto a one-pixel
+        // line (a paper cutout lit edge-on -- mathematically right, visually wrong).
+        // Being a constant, it is continuous through every light angle: no pop as the
+        // shadow swings past horizontal.
+        ky   : (_dgy / _gd) * 0.5 * _s + 0.3,
         gy   : _gy,
         // Brightness stamped into the shadow surface: full at the light, 0 at its edge.
         a255 : round(255 * (1 - _gd / _L.r))
@@ -565,8 +572,11 @@ function anim_light_sheen(_parts, _gx, _gy) {
         var _gd  = sqrt(_dgx * _dgx + _dgy * _dgy);
         if (_gd > _L.r || _gd < 1) continue;
         var _t = 1 - _gd / _L.r;
-        var _a = 0.34 * _t * _t;
-        if (_a < 0.03) continue;
+        // Cubic, and gentle: additive warm over already-saturated art blows out fast (an
+        // orange horse turned lava at the first attempt). This is a kiss of light for
+        // characters practically touching the lamp, not a paint job.
+        var _a = 0.16 * _t * _t * _t;
+        if (_a < 0.02) continue;
         var _ox = -_dgx / _gd * 1.5;
         var _oy = -_dgy * 0.5 / _gd * 1.5;
         gpu_set_blendmode(bm_add);
@@ -578,7 +588,7 @@ function anim_light_sheen(_parts, _gx, _gy) {
             draw_sprite_ext(_spr, _parts[i + PART.SUB],
                 _parts[i + PART.X] + _ox, _parts[i + PART.Y] + _oy,
                 _parts[i + PART.XS], _parts[i + PART.YS], _parts[i + PART.ANG],
-                make_colour_rgb(255, 214, 140), _a * _parts[i + PART.ALPHA]);
+                make_colour_rgb(226, 208, 168), _a * _parts[i + PART.ALPHA]);
         }
         gpu_set_blendmode(bm_normal);
     }
