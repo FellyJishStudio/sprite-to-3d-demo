@@ -277,22 +277,31 @@ function anim_build(_parts, _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
 
         // MULTI-BONE CHAIN. Project every joint first: each bone sprite has to know where
         // the next one starts.
+        //
+        // Z is an out-of-plane PIVOT, not a translation: a bone's z displaces its FAR end,
+        // so joint i takes the previous bone's z (the chain root takes none) and the tip
+        // takes the last bone's. That is what makes a waving forearm pivot at the elbow
+        // instead of dragging the elbow with it.
         static _jx = []; static _jy = []; static _row = [];
         array_resize(_jx, _n); array_resize(_jy, _n); array_resize(_row, _n);
+        var _zj = 0;        // z applied at the joint being placed (previous bone's)
+        var _zpen = 0;      // z applied at the LAST joint, for the tip differential
         for (var i = 0; i < _n; i++) {
             var _r2 = _at + _rows[_bs[i].slot];
             _row[i] = _r2;
-            _jx[i] = _x + _dat[_r2 + ANIM_X] * _dcos + _dat[_r2 + ANIM_Z] * _zsin + _ox;
+            _jx[i] = _x + _dat[_r2 + ANIM_X] * _dcos + _zj * _zsin + _ox;
             _jy[i] = _y + _dat[_r2 + ANIM_Y] + _oy
                    + ((_iso == undefined) ? 0
                       : anim_iso(_bs[i].iso_cls, _bs[i].iso_flat, _iso_y, _down));
+            _zpen = _zj;
+            _zj   = _dat[_r2 + ANIM_Z];
         }
 
         // The tip is synthesized from the last bone's own length and baked angle -- note
-        // cos(direction) applies to X only.
+        // cos(direction) applies to X only, and the last bone's z lands here in full.
         var _la = _dat[_row[_n - 1] + ANIM_ANGLE];
         var _ln = _bs[_n - 1].len;
-        var _ex = _jx[_n - 1] + _ln * _dcos * dcos(_la);
+        var _ex = _jx[_n - 1] + _ln * _dcos * dcos(_la) + (_zj - _zpen) * _zsin;
         var _ey = _jy[_n - 1] - _ln * dsin(_la);
 
         if (c == _rig.armChain) {          // the chain a held item hangs off

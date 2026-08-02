@@ -15,7 +15,9 @@
 // (the manifest's `z` flag says which); the loader widens legacy rows with z=0 so this
 // layout is the only one the renderer ever sees -- no per-clip branching in the hot loop.
 // Z is the character's lateral axis: it projects into screen x through -dsin(direction),
-// the sibling of the x squash. See anim_facing().
+// the sibling of the x squash. In a jointed chain a bone's z displaces its FAR end -- an
+// out-of-plane pivot about its own joint -- so a waving forearm pivots at the elbow. A
+// lone bone (body, head, animal parts) displaces bodily. See anim_facing/anim_build.
 #macro ANIM_X      0
 #macro ANIM_Y      1
 #macro ANIM_Z      2

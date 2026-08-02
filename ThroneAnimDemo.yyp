@@ -22,6 +22,7 @@
     {"$GMIncludedFile":"","%Name":"anim_ride.bin","CopyToMask":-1,"filePath":"datafiles/baked_sequences","name":"anim_ride.bin","resourceType":"GMIncludedFile","resourceVersion":"2.0",},
     {"$GMIncludedFile":"","%Name":"anim_run.bin","CopyToMask":-1,"filePath":"datafiles/baked_sequences","name":"anim_run.bin","resourceType":"GMIncludedFile","resourceVersion":"2.0",},
     {"$GMIncludedFile":"","%Name":"anim_walk.bin","CopyToMask":-1,"filePath":"datafiles/baked_sequences","name":"anim_walk.bin","resourceType":"GMIncludedFile","resourceVersion":"2.0",},
+    {"$GMIncludedFile":"","%Name":"anim_wave.bin","CopyToMask":-1,"filePath":"datafiles/baked_sequences","name":"anim_wave.bin","resourceType":"GMIncludedFile","resourceVersion":"2.0",},
     {"$GMIncludedFile":"","%Name":"sq_horse_idle_state.bin","CopyToMask":-1,"filePath":"datafiles/baked_sequences","name":"sq_horse_idle_state.bin","resourceType":"GMIncludedFile","resourceVersion":"2.0",},
     {"$GMIncludedFile":"","%Name":"sq_horse_run.bin","CopyToMask":-1,"filePath":"datafiles/baked_sequences","name":"sq_horse_run.bin","resourceType":"GMIncludedFile","resourceVersion":"2.0",},
     {"$GMIncludedFile":"","%Name":"sq_horse_walk.bin","CopyToMask":-1,"filePath":"datafiles/baked_sequences","name":"sq_horse_walk.bin","resourceType":"GMIncludedFile","resourceVersion":"2.0",},
