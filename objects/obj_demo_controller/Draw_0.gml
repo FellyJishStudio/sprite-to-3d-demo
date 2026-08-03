@@ -30,10 +30,22 @@ while (_c <= _y1 + _x1 * 0.5) {
 gpu_set_blendmode(bm_add);
 for (var i = 0; i < array_length(global.demo_lights); i++) {
     var _L = global.demo_lights[i];
-    var _w = _L.r * 0.5;
+    // Height spreads the pool and thins it: the same light falling on more floor. Squared
+    // because it is spread over an area, which is also what keeps a low lamp reading as
+    // bright and tight rather than merely smaller.
+    var _hf = _L.h / LIGHT_H_MID;
+    var _w  = _L.r * 0.5 * (0.55 + 0.45 * _hf);
+    var _k  = clamp(1 / (_hf * _hf), 0.18, 1.6);
     draw_ellipse_colour(_L.x - _w, _L.y - _w * 0.5, _L.x + _w, _L.y + _w * 0.5,
-                        make_colour_rgb(84, 66, 28), c_black, false);
-    draw_circle_colour(_L.x, _L.y - 2, 4, make_colour_rgb(255, 236, 170), c_black, false);
+                        make_colour_rgb(84 * _k, 66 * _k, 28 * _k), c_black, false);
+    // The lamp itself is drawn UP at its height -- height is straight screen-y, the one
+    // axis the isometric projection does not halve -- with a stem down to the ground point
+    // its pool and its shadows are actually measured from.
+    var _ly = _L.y - _L.h;
+    draw_line_colour(_L.x, _L.y, _L.x, _ly, make_colour_rgb(30, 26, 12),
+                                            make_colour_rgb(90, 80, 40));
+    draw_circle_colour(_L.x, _L.y - 2, 3, make_colour_rgb(40, 36, 18), c_black, false);
+    draw_circle_colour(_L.x, _ly, 4, make_colour_rgb(255, 236, 170), c_black, false);
 }
 gpu_set_blendmode(bm_normal);
 

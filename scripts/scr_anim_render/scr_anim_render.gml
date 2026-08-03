@@ -486,16 +486,22 @@ function anim_light_shadow(_L, _gx, _gy) {
     var _dgx = _gx - _L.x;
     var _dgy = (_gy - _L.y) * 2;                     // screen y -> iso ground y
     var _gd  = sqrt(_dgx * _dgx + _dgy * _dgy);
-    if (_gd > _L.r || _gd < 1) return undefined;
+    // Reach and falloff go by the TRUE distance to the lamp, through the air rather than
+    // across the floor, so raising it pulls its circle in and thins what is left. Ground
+    // distance still guards the divide below -- that one is about the ray, not the range.
+    var _d3  = sqrt(_gd * _gd + _L.h * _L.h);
+    if (_d3 > _L.r || _gd < 1) return undefined;
     return {
         dx   : _dgx,             // caster relative to the light, in ground units
         dy2  : _dgy,
         gd   : _gd,
         ux   : _dgx / _gd,       // unit ray, ground units
         uy   : _dgy / _gd,
+        // Height is the whole of shadow length: the lower the lamp, the further a given
+        // caster throws. Capped, or a lamp near the floor would ask for an endless one.
         s    : min(_gd / _L.h, 1.6),
         // Brightness stamped into the shadow surface: full at the light, 0 at its edge.
-        a255 : round(255 * (1 - _gd / _L.r))
+        a255 : round(255 * (1 - _d3 / _L.r))
     };
 }
 
@@ -531,7 +537,17 @@ function anim_light_shadow(_L, _gx, _gy) {
 /// This is the STARTING value only. anim_boot copies it into
 /// `global.anim_shadow_min_fold`, which is what the renderer actually reads, so it can be
 /// tuned live -- [ and ] in the demo, with the current value on the HUD.
-#macro ANIM_SHADOW_MIN_FOLD 0.52
+/// Zero: the fold-based width floor is off by default. It bought width by LEANING the
+/// baseline, which has to choose a side, and every choice of side flipped somewhere -- at
+/// broadside, or at the lamp's own row as a caster ran past it. ANIM_SHADOW_EDGE holds the
+/// width now, symmetrically, with no side to choose. The dial is left wired up (O and P) so
+/// the old behaviour can still be dialled back in and looked at.
+#macro ANIM_SHADOW_MIN_FOLD 0
+
+/// How far apart the two measured shadow edges are held, ACROSS the ray, in pixels. This is
+/// the number that actually sets the shadow's width, and the one the F3 overlay draws as the
+/// gap between the red dots. K and L move it live.
+#macro ANIM_SHADOW_EDGE 8
 /// Floor under the shadow's horizontal scale. At zero the sprite squashes to a line and
 /// then comes out MIRRORED, columns in reverse order; this keeps a quarter of the width
 /// no matter how far the lean is pushed. It bounds the O/P dial rather than the dial
@@ -1618,8 +1634,11 @@ function anim_light_sheen(_parts, _gx, _gy) {
         var _dgx = _gx - _L.x;
         var _dgy = (_gy - _L.y) * 2;                 // iso 1:2 metric, as everywhere
         var _gd  = sqrt(_dgx * _dgx + _dgy * _dgy);
-        if (_gd > _L.r || _gd < 1) continue;
-        var _t = 1 - _gd / _L.r;
+        // Through the air, not across the floor: a lamp standing directly over a character
+        // is still a lamp some distance away, and lifting it has to dim what it throws.
+        var _d3  = sqrt(_gd * _gd + _L.h * _L.h);
+        if (_d3 > _L.r || _gd < 1) continue;
+        var _t = 1 - _d3 / _L.r;
         // Cubic, and gentle: additive warm over already-saturated art blows out fast (an
         // orange horse turned lava at the first attempt). This is a kiss of light for
         // characters practically touching the lamp, not a paint job.
@@ -1662,7 +1681,10 @@ function anim_blob_scale(_x, _y) {
         var _L = _ls[i];
         var _dgx = _x - _L.x, _dgy = (_y - _L.y) * 2;
         var _gd = sqrt(_dgx * _dgx + _dgy * _dgy);
-        if (_gd < _L.r) _best = max(_best, 1 - _gd / _L.r);
+        // Same true distance the cast shadow fades by, or the blob would hand over to a
+        // cast shadow that a raised lamp has already faded out, and leave a gap.
+        var _d3 = sqrt(_gd * _gd + _L.h * _L.h);
+        if (_d3 < _L.r) _best = max(_best, 1 - _d3 / _L.r);
     }
     return 1 - _best;
 }

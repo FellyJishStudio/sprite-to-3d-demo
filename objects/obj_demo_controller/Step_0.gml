@@ -238,3 +238,4 @@ if (mouse_check_button_pressed(mb_right)) {
     if (menu_open) { menu_target = _near; menu_x = _gx; menu_y = _gy; }
 }
 
+

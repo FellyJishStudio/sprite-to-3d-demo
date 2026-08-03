@@ -1,4 +1,4 @@
-﻿/// LOADING
+/// LOADING
 ///
 /// Everything the runtime needs is pipeline output, read as data:
 ///
@@ -317,9 +317,9 @@ function anim_boot() {
     // instead of rebuilt for each value. The macro is the starting point; the renderer
     // reads this. See ANIM_SHADOW_MIN_FOLD.
     global.anim_shadow_min_fold = ANIM_SHADOW_MIN_FOLD;
-    // Extra pixels of separation between the two measured shadow edges, on top of the
-    // fold above. K and L in the demo; the F3 overlay draws exactly this gap.
-    global.anim_shadow_edge = 0;
+    // Pixels of separation held between the two measured shadow edges. K and L in the demo;
+    // the F3 overlay draws exactly this gap.
+    global.anim_shadow_edge = ANIM_SHADOW_EDGE;
     anim_fetch("clips.json");
 }
 
