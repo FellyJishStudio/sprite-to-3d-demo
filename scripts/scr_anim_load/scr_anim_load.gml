@@ -1,4 +1,4 @@
-/// LOADING
+﻿/// LOADING
 ///
 /// Everything the runtime needs is pipeline output, read as data:
 ///
@@ -175,6 +175,16 @@ function anim_rig_load(_id) {
     // Corrections to the rig, from the demo file so the rig copy stays untouched.
     if (_r.iso != undefined) _r.iso.flat = is_struct(_demo[$ "iso"])
         ? (_demo.iso[$ "flat"] ?? []) : [];
+    // Where the cast-shadow ground line tilts through: rig-space x of the back and front
+    // hoof columns. Absent (the humanoid), the line stays level through the origin.
+    if (_r.iso != undefined) _r.iso.groundX = is_struct(_demo[$ "iso"])
+        ? _demo.iso[$ "groundX"] : undefined;
+
+    // The floor area this rig occupies, as SEMI-axes in ground units: `a` along the body
+    // axis, `b` across it. The cast shadow is the wedge between the light's tangent lines
+    // to this outline (anim_shadow_paint), so a rig without one would cast the flat card's
+    // degenerate line -- the 2px dash. A round default keeps any new rig safe.
+
 
     // Resolve the name-list rules into the per-bone flags declared above. Bones that share
     // a name (duplicate source bones) all take the rule, exactly as the name scan did.
@@ -195,6 +205,11 @@ function anim_rig_load(_id) {
     // Ground shadows and head attachments, each pinned to a drawn chain (or, for a shadow
     // with a null chain, to the instance origin). Chain ids are resolved to indices here so
     // the renderer never compares a string.
+    // Semi-axes of the floor this rig stands on, `a` along the body and `b` across, in
+    // ground units. Used ONLY to find how far the contact points reach along a light's
+    // ray, so the cast can start at the nearest foot (anim_shadow_anchor); the shadow's
+    // width comes from the rig posed at the light's facing, not from here.
+
     _r.shadow = _demo[$ "shadow"] ?? [];
     _r.attach = _demo[$ "attach"] ?? [];
     var _pinned = [_r.shadow, _r.attach];
@@ -360,3 +375,5 @@ function anim_async() {
     global.anim_ready = true;
     return true;
 }
+
+

@@ -3,6 +3,12 @@
 
 anim_boot();          // asynchronous; the cast is spawned in Step once it finishes
 randomize();
+var _shadow_test_error = anim_shadow_regression_test();
+if (_shadow_test_error != "") {
+    show_error("Shadow projection regression: " + _shadow_test_error, true);
+} else {
+    show_debug_message("SHADOW regression=PASS samples=1441 step=0.25deg");
+}
 
 spawned = false;
 
@@ -12,6 +18,11 @@ spawned = false;
 global.demo_lights = [];
 shadow_surfs = [];            // one scratch surface PER LIGHT for the cast-shadow layer:
                               // a pool fades other lights' shadows, never its own (Draw)
+// One reusable card receives the exact assembled palette before each cast projection.
+// It is shared serially by every character/light; only the per-light destination persists.
+caster_size = 256;
+caster_surf = -1;
+caster_cam = camera_create();
 function demo_add_light(_x, _y) {
     if (array_length(global.demo_lights) >= 6) return;      // enough for a demo room
     array_push(global.demo_lights, { x: _x, y: _y, h: 60, r: 340 });

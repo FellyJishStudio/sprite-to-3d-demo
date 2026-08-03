@@ -407,7 +407,7 @@ function anim_build(_parts, _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
 /// Sort a built list and paint it. GameMaker draws HIGHER depth first (further back). A few
 /// dozen entries at most, so an insertion sort over an index list beats a comparator
 /// callback -- and it is stable, which is what makes the chain emission order mean anything.
-function anim_paint(_parts) {
+function anim_paint(_parts, _shadow_source = false) {
     var _count = array_length(_parts) div PART.SIZE;
     var _order = array_create(_count);
     for (var i = 0; i < _count; i++) _order[i] = i * PART.SIZE;
@@ -419,6 +419,7 @@ function anim_paint(_parts) {
 
     for (var i = 0; i < _count; i++) {
         var _o = _order[i];
+        if (_shadow_source && _parts[_o + PART.DEPTH] >= 900000) continue;
         var _spr = _parts[_o + PART.SPR];
         // An appearance slot that never resolved arrives as -1 (asset_get_index missed) or
         // undefined (a look struct without that _spr field). Either one would abort the
@@ -453,7 +454,7 @@ function anim_paint(_parts) {
     // sprites, in paint order, so the labels stack the same way the art does.
     // Guarded rather than relying on some object's Create having run first: anim_paint
     // is called from Draw events whose order is not guaranteed against that.
-    if (variable_global_exists("anim_debug_depth") && global.anim_debug_depth) {
+    if (!_shadow_source && variable_global_exists("anim_debug_depth") && global.anim_debug_depth) {
         draw_set_font(-1);
         for (var i = 0; i < _count; i++) {
             var _o2 = _order[i];
@@ -472,137 +473,275 @@ function anim_paint(_parts) {
     }
 }
 
-/// One light's shear, for a character standing at (_gx, _gy) -- or undefined when the
-/// light does not reach it. A shadow is NOT a displaced copy of the finished parts: that
-/// scatters bone-sized sprites along a line and the figure tears apart. It is a second
-/// anim_build pass whose JOINTS are laid onto the ground first, so the point-at-next-joint
-/// stretch then draws connected, correctly elongated bones between them -- the same
-/// mechanic that keeps the standing character connected keeps its shadow connected.
+/// The ray frame for one caster under one light. Isometric ground distances use twice the
+/// screen-y delta; converting a ground vector back to screen space halves y.
 ///
-///     joint (jx, jy) at height h = gy - jy   ->   (jx + kx*h, gy + ky*h)
-///
-/// (kx, ky) is the unit ground direction away from the light times h*groundDist/lightHeight
-/// -- a linear slope, so the figure stays in one piece and lengthens smoothly with
-/// distance. The ISOMETRIC 1:2 ground supplies both the direction and the metric: ground
-/// deltas double screen-y going in and halve coming back, so a light reaches twice as far
-/// along x as along screen-y and the shadow of a ring of characters is a true circle on
-/// the iso ground. Stateless: recomputed every frame.
+/// This returns the LIGHT-RELATIVE ray, not a finished transform, because the shadow is
+/// no longer one sheared card: anim_shadow_paint casts each column of the silhouette
+/// along its own ray out of the light, so it needs the frame rather than a single
+/// direction. `s` stays the art-directed length law the game has always used -- a shadow
+/// is `s` times the caster's height, capped at 1.6 -- because a true perspective length
+/// would send the rider's head (h ~ 85, above a lamp at h 60) off to infinity.
 function anim_light_shadow(_L, _gx, _gy) {
     var _dgx = _gx - _L.x;
     var _dgy = (_gy - _L.y) * 2;                     // screen y -> iso ground y
     var _gd  = sqrt(_dgx * _dgx + _dgy * _dgy);
     if (_gd > _L.r || _gd < 1) return undefined;
-    // Length cap 1.6, down from 2.2: sunset-length shadows turned a mounted pair (75px of
-    // stacked height) into a screen-crossing wedge that read as a smear, not a figure.
-    var _s  = min(_gd / _L.h, 1.6);                  // shadow length per pixel of height
-    // The shear is the PURE iso away-direction: unit ground vector away from the light,
-    // times s, with ground-y halved back onto the screen -- with ONE exception: |ky| is
-    // floored at 0.35, sign preserved. At near-horizontal shear the projection
-    // degenerates onto a single line, and a wide pose's lateral spread separates parts
-    // ALONG that line -- the shadow fragmented into dashes. The floor keeps enough
-    // vertical spread for the figure to stay connected and shaped. Diagonal and
-    // north/south shadows are untouched (their |ky| already clears it); this is NOT the
-    // old constant +0.3 bias, which bent every direction toward the camera.
-    // The PURE iso projection, with no floors and no caps: every term is continuous in
-    // the light-character geometry, so the shadow can never jump as either moves -- a
-    // hard |ky| floor once lived here and snapped the shadow's slope whenever the
-    // character crossed the light's horizontal. Near-east-west thinness (a billboard lit
-    // edge-on really is a line) is answered by the CONTINUOUS thickening below, which
-    // fades in as the axis flattens; and slope limits can never fix disconnection --
-    // the map is affine, a connected figure casts a connected shadow at any slope.
-    var _kx = (_dgx / _gd) * _s;
-    var _ky = (_dgy / _gd) * 0.5 * _s;
-    var _kl = sqrt(_kx * _kx + _ky * _ky);           // >= s/2 > 0: unit dir, y halved
     return {
-        kx   : _kx,
-        ky   : _ky,
-        gy   : _gy,
-        // Every part keeps its TRUE projected position: lateral offsets stay due east at
-        // every light angle (no mirror, ever), heights ride the shear. The one degeneracy
-        // -- a due east/west light folds the figure toward a line -- is answered by
-        // THICKENING the stamp (extra passes offset vertically, see anim_shadow_paint),
-        // never by re-aiming the width: two earlier attempts that redirected lateral
-        // offsets scrambled wide figures, ramming the horse's length into vertical steps
-        // that read as a mirrored edge. Thickness fades in smoothly as the axis
-        // approaches horizontal, so nothing pops.
-        thick : 3.0 * max(0, 1 - abs(_ky / _kl) / 0.55),
+        dx   : _dgx,             // caster relative to the light, in ground units
+        dy2  : _dgy,
+        gd   : _gd,
+        ux   : _dgx / _gd,       // unit ray, ground units
+        uy   : _dgy / _gd,
+        s    : min(_gd / _L.h, 1.6),
         // Brightness stamped into the shadow surface: full at the light, 0 at its edge.
         a255 : round(255 * (1 - _gd / _L.r))
-        // There is deliberately NO lateral mirror at any light angle. The rig is a
-        // billboard: its lateral axis IS the ground's east-west axis, and a planar
-        // projection maps east to east whichever way the shadow falls -- a sword pointing
-        // east casts an east-pointing shadow both toward and away from the camera. A
-        // toward-camera "mirror" was tried here and looked wrong on screen; do not
-        // reintroduce it from the screen-image-orientation argument (the shear's negative
-        // determinant), which is about the picture, not the world.
     };
 }
 
-/// Paint a built character as ONE sheared silhouette for one light, straight to the
-/// active target (the controller's shadow surface). The shadow transform
+/// The ground line a rig's cast shadow shears about, as {t, c}: the ground under card
+/// column u sits at screen-y offset c + t*u from the stable origin row. A rig with no iso
+/// tilt (or no groundX) gets {0, 0} -- the level baseline through the origin, which the
+/// baked idle data puts within ~2px of every humanoid foot and every untilted hoof.
 ///
-///     T(p) = (px + kx*(gy - py),  gy + ky*(gy - py))
+/// The horse is why this exists: its iso `front` list includes all four front-leg bones,
+/// so the front hooves are DRAWN shifted by the full tilt as the horse turns -- a depth
+/// cue, not elevation. They stand on a different screen row than the back hooves at most
+/// facings, and a level baseline reads that row difference as height and casts it along
+/// the light ray: the front-leg shadows detach by tilt times cast length. Tilting the
+/// line through both hoof rows pins both pairs, and it is still one linear map.
 ///
-/// is AFFINE in the part's screen position, so each part's drawn QUAD goes through T
-/// corner by corner (draw_sprite_pos). Affinity is the no-gaps guarantee: parts that
-/// touch standing up still touch sheared, whatever their angle -- the previous
-/// lie-down-and-stretch pass approximated this per part and opened seams on every
-/// diagonal one (the horse's neck). Colour comes from the fog the caller set.
-function anim_shadow_paint(_parts, _s) {
-    var _count = array_length(_parts);
-    var _kx = _s.kx, _ky = _s.ky, _gy = _s.gy;
-    var _th = _s.thick;
-    var _reps = (_th >= 0.5) ? 3 : 1;    // near east-west: stamp thrice, offset +/- thick
-    // sh_silhouette makes the stamp a FLAT grey: the texture contributes only its alpha
-    // shape, the vertex colour the value. Neither fog (ignored by textured primitives --
-    // it silently left sprite colours in the surface, so black hair cast nothing and the
-    // dark horse cast weakly) nor alpha-channel accumulation (blend equations proved
-    // unreliable on the alpha channel here, overlaps showed as translucent boxes) can do
-    // this in the fixed pipeline. Opaque grey stamps overwrite each other, so overlaps
-    // inside a silhouette stay uniform, exactly like the approved look.
-    var _grey = make_colour_rgb(_s.a255, _s.a255, _s.a255);
-    shader_set(sh_silhouette);
-    for (var i = 0; i < _count; i += PART.SIZE) {
-        if (_parts[i + PART.DEPTH] >= 900000) continue;      // contact blobs cast nothing
-        var _al = _parts[i + PART.ALPHA];
-        if (_al <= 0) continue;                              // hidden stays hidden
-        var _spr = _parts[i + PART.SPR];
-        if (_spr == undefined || !sprite_exists(_spr)) continue;
-        var _sub = _parts[i + PART.SUB];
-        var _px = _parts[i + PART.X],  _py = _parts[i + PART.Y];
-        var _xs = _parts[i + PART.XS], _ys = _parts[i + PART.YS];
-        var _ca = dcos(_parts[i + PART.ANG]), _sa = dsin(_parts[i + PART.ANG]);
-        // NOT draw_sprite_pos: texture pages auto-crop sprites, and that function maps
-        // the TRIMMED texture onto the full-size quad -- every cropped part smears. The
-        // quad here is the trimmed rect itself (uvs[4..7]), in local pixels around the
-        // origin, scaled and rotated exactly as draw_sprite_ext would place it, then
-        // sheared corner by corner. Textured primitives also honour the fog the caller
-        // set, which draw_sprite_pos does not.
-        var _uv = sprite_get_uvs(_spr, _sub);
-        var _u0 = (_uv[4] - sprite_get_xoffset(_spr)) * _xs;
-        var _v0 = (_uv[5] - sprite_get_yoffset(_spr)) * _ys;
-        var _u1 = _u0 + sprite_get_width(_spr)  * _uv[6] * _xs;
-        var _v1 = _v0 + sprite_get_height(_spr) * _uv[7] * _ys;
-        var _x1 = _px + _u0 * _ca + _v0 * _sa,  _y1 = _py - _u0 * _sa + _v0 * _ca;
-        var _x2 = _px + _u1 * _ca + _v0 * _sa,  _y2 = _py - _u1 * _sa + _v0 * _ca;
-        var _x3 = _px + _u1 * _ca + _v1 * _sa,  _y3 = _py - _u1 * _sa + _v1 * _ca;
-        var _x4 = _px + _u0 * _ca + _v1 * _sa,  _y4 = _py - _u0 * _sa + _v1 * _ca;
-        // Corner -> shadow: the TRUE projection, nothing else. x keeps the corner's own
-        // east-west position plus the shear; y is the shear alone.
-        var _sx1 = _x1 + _kx * (_gy - _y1), _sy1 = _gy + _ky * (_gy - _y1);
-        var _sx2 = _x2 + _kx * (_gy - _y2), _sy2 = _gy + _ky * (_gy - _y2);
-        var _sx3 = _x3 + _kx * (_gy - _y3), _sy3 = _gy + _ky * (_gy - _y3);
-        var _sx4 = _x4 + _kx * (_gy - _y4), _sy4 = _gy + _ky * (_gy - _y4);
-        for (var _r = 0; _r < _reps; _r++) {
-            var _dy = (_r == 0) ? 0 : ((_r == 1) ? -_th : _th);
-            draw_primitive_begin_texture(pr_trianglestrip, sprite_get_texture(_spr, _sub));
-            draw_vertex_texture_colour(_sx1, _sy1 + _dy, _uv[0], _uv[1], _grey, _al);
-            draw_vertex_texture_colour(_sx2, _sy2 + _dy, _uv[2], _uv[1], _grey, _al);
-            draw_vertex_texture_colour(_sx4, _sy4 + _dy, _uv[0], _uv[3], _grey, _al);
-            draw_vertex_texture_colour(_sx3, _sy3 + _dy, _uv[2], _uv[3], _grey, _al);
-            draw_primitive_end();
-        }
+/// The slope fades out quadratically as foreshortening stacks the two hoof columns
+/// (facing toward/away from camera, dcos -> 0): there both rows share one column and no
+/// single line can hold them, so the line relaxes to level through the NEAR pair's row
+/// -- the contact points the eye checks stay pinned, and the far pair, mostly hidden
+/// behind the body at those facings, absorbs the error. The slide is continuous at
+/// every facing instead of popping at the degenerate one.
+///
+/// Scratch struct, same contract as anim_facing: valid until the next call, consumed by
+/// anim_shadow_paint before another character builds.
+function anim_shadow_ground(_rig, _dir, _is_player) {
+    static _g = { t: 0, c: 0 };
+    _g.t = 0;
+    _g.c = 0;
+    var _iso = _rig.iso;
+    if (_iso == undefined) return _g;
+    var _gx = _iso[$ "groundX"];
+    if (_gx == undefined) return _g;
+    var _f = anim_facing(_rig, _dir, _is_player);
+    // The same tilt anim_build applies, zeroing included, or this line would disagree
+    // with the drawn hooves it exists to pin.
+    var _iso_y = (_f.down ? _iso.ampDown : _iso.ampUp) * dsin(_f.skew);
+    if (abs(_iso_y) <= 1 && _f.down) _iso_y = 0;
+    var _ub = _gx[0] * _f.dcos, _uf = _gx[1] * _f.dcos;
+    var _vb = _f.down ? -1 : 0;      // back legs are iso cls 0: the facing-down step only
+    var _vf = -_iso_y;               // front legs are iso cls 2: full tilt, no step
+    var _du = _uf - _ub;
+    var _w = 0;
+    if (abs(_du) >= 1) {
+        var _fade = min(1, abs(_du) / 24);
+        _w = _fade * _fade;
+        _g.t = ((_vf - _vb) / _du) * _w;
     }
+    // The anchor row slides with the same weight the slope fades by: hoof-pair midpoint
+    // while the slope is live (side-ish views, where the line holds BOTH pairs exactly),
+    // the NEAR pair's row -- the lower-drawn one -- as the columns stack face-on.
+    var _mid = (_vb + _vf) * 0.5;
+    _g.c = (_mid * _w + max(_vb, _vf) * (1 - _w)) - _g.t * (_ub + _uf) * 0.5;
+    return _g;
+}
+
+/// Startup regression sweep for the shadow projection. It samples a dense 2:1 isometric
+/// orbit at a quarter of a degree, and every check here exists because the matching
+/// artifact was seen on screen and reported. Each one names its symptom:
+///
+///   ray        the frame must match the light geometry and the length law.
+///   ECHO       the sprite's own axis must map to screen x, unscaled and unmirrored, at
+///              every light angle. This is the shadow LOOKING LIKE the horse and turning
+///              with it. Rotate this axis with the ray instead -- as one revision did --
+///              and the shadow shows the horse from the lamp's side, which reads as the
+///              shadow not turning with the horse.
+///   THICKNESS  the flank smear must stay fixed and in the CASTER's frame, independent of
+///              where the light is. Sizing it against the ray instead asked for up to 48
+///              units and dissolved the horse into a SLAB.
+///   DASH       the silhouette's extent across the ray must never collapse. The flank is
+///              what prevents it: a flat card has no thickness down its own axis, so with
+///              the ray along the body there would otherwise be nothing to cast.
+///   wedge      the strip's two edges must DIVERGE with distance rather than run parallel,
+///              and everything must move continuously -- a jump is the mirror FLIP.
+///
+/// The algebra mirrors anim_shadow_paint and must stay in sync with it; see
+/// docs/shadow-test-plan.md. Empty string means every invariant passed.
+function anim_shadow_regression_test() {
+    var _L = { x: 0, y: 0, h: 60, r: 400 };
+    var _radius = 170;
+    var _lx = 128, _ly = 240;
+    var _last_ux = 0, _last_uy = 0;
+    var _last_e0x = 0, _last_e0y = 0, _last_e1x = 0, _last_e1y = 0;
+    // A caster heading, held fixed while the light goes round.
+    var _dir = 35;
+
+    for (var _i = 0; _i <= 1440; _i++) {
+        var _ang = _i * 0.25;
+        var _gx = _radius * dcos(_ang);
+        var _gy = -_radius * 0.5 * dsin(_ang);
+        var _s = anim_light_shadow(_L, _gx, _gy);
+        if (_s == undefined) return "missing transform at " + string(_ang);
+
+        var _dgx = _gx - _L.x, _dgy = (_gy - _L.y) * 2;
+        var _gd = sqrt(_dgx * _dgx + _dgy * _dgy);
+        if (abs(_s.ux - _dgx / _gd) > 0.0001 || abs(_s.uy - _dgy / _gd) > 0.0001
+         || abs(_s.s - min(_gd / _L.h, 1.6)) > 0.0001) {
+            return "cast ray mismatch at " + string(_ang);
+        }
+
+        // ECHO: run two card columns through the SAME root expression anim_shadow_paint
+        // uses, and they must come out that same distance apart, in that same order,
+        // whatever the light is doing. Written through the mapping on purpose: swap the
+        // root back to the ray-perpendicular form a previous revision used and this goes
+        // straight to |40 * nx|, which fails everywhere except due north and south.
+        var _rxL = _gx + (-20);
+        var _rxR = _gx + ( 20);
+        if (abs((_rxR - _rxL) - 40) > 0.0001) {
+            return "sprite echo broken at " + string(_ang);
+        }
+
+        // No width floor is asserted here, and that is deliberate. The shadow is ONE stamp
+        // of the drawn palette, so with the lamp nearly in line with the caster's own axis
+        // there is genuinely nothing side-on to cast and it goes thin. Every device that
+        // propped the width up there cost more than it bought -- a signed floor popped, a
+        // stamp fan banded, a lying card double-exposed, a sideways smear dithered the
+        // palette into a slab AND pulled its near edge off the feet. Thin is the honest
+        // answer at that one band, and it stays.
+        var _nx = -_s.uy, _ny = _s.ux;
+        var _skewd = point_direction(0, 0, dcos(_dir) * 0.2, -dsin(_dir) * 0.6);
+        var _cardw = 46 * abs(dcos(_skewd)) + 12;
+
+        // The strip's edges must spread apart with distance.
+        var _e0x = 0, _e0y = 0, _e1x = 0, _e1y = 0, _rootSep = 0;
+        for (var _e = 0; _e < 2; _e++) {
+            var _u = (_e == 0) ? -_cardw * 0.5 : _cardw * 0.5;
+            var _rgx = _dgx + _u, _rgy = _dgy;
+            var _rl = max(1, sqrt(_rgx * _rgx + _rgy * _rgy));
+            var _rx = _gx + _u, _ry = _gy;
+            var _hh = 60;
+            var _tx = _rx + _hh * (_rgx / _rl) * _s.s;
+            var _ty = _ry + _hh * (_rgy / _rl) * 0.5 * _s.s;
+            if (_e == 0) { _e0x = _tx; _e0y = _ty; _rootSep = -(_rx * _nx + _ry * 2 * _ny); }
+            else         { _e1x = _tx; _e1y = _ty; _rootSep += (_rx * _nx + _ry * 2 * _ny); }
+        }
+        var _tipSep = abs((_e1x - _e0x) * _nx + (_e1y - _e0y) * 2 * _ny);
+        if (_tipSep < _rootSep - 0.001) return "wedge fails to diverge at " + string(_ang);
+        if (_i > 0) {
+            var _jump = max(max(abs(_e0x - _last_e0x), abs(_e0y - _last_e0y)),
+                            max(abs(_e1x - _last_e1x), abs(_e1y - _last_e1y)));
+            if (_jump > 8) return "wedge edge discontinuity at " + string(_ang);
+        }
+        _last_e0x = _e0x; _last_e0y = _e0y;
+        _last_e1x = _e1x; _last_e1y = _e1y;
+
+        if (_i > 0 && max(abs(_s.ux - _last_ux), abs(_s.uy - _last_uy)) > 0.03) {
+            return "ray discontinuity at " + string(_ang);
+        }
+        _last_ux = _s.ux;
+        _last_uy = _s.uy;
+    }
+    return "";
+}
+
+/// Render the already assembled palette once, then cast that ONE texture into the wedge
+/// the light throws.
+///
+/// The same depth-sorted horse/rider or humanoid that appears on screen supplies the alpha
+/// cutout, so a body piece or head cannot disappear independently -- but posed at the
+/// LIGHT's facing rather than the camera's (anim_shadow_dir), which is the whole idea.
+///
+/// The history is worth keeping, because four separate artifacts all had one cause. This
+/// used to transform the CAMERA's card into a shadow. That card's structure lies along the
+/// ray whenever the caster points at the lamp, so casting it collapsed the silhouette to a
+/// 2px dash; and every attempt to widen the dash failed in its own way -- a floored ky
+/// mirror-popped as the caster crossed the light's row, a swept fan of stamps banded, a
+/// laid-down second card double-exposed, and a sideways smear stamped the narrow image
+/// past itself into a featureless slab. None of them could work: no transform of a card
+/// drawn for one viewpoint can produce the silhouette seen from another.
+///
+/// Posing the shadow from the light removes the cause instead of the symptom. The card
+/// then IS the outline being cast, at the right width for free: broadside to the light it
+/// is the whole body, nose-on it foreshortens to the flank. Nothing here needs a declared
+/// footprint, a minimum width, a smear or a special case, and the rigs no longer carry a
+/// `groundFootprint` because of it.
+///
+/// What remains is the projection: lay the card's horizontal axis across the ray, and cast
+/// each column along ITS OWN ray out of the light so the wedge spreads with distance
+/// rather than running as a parallel strip. Column-varying direction is not affine, so
+/// this cannot go through draw_surface_ext or one world matrix. It is a textured triangle
+/// strip: stations across the card, two vertices each, adjacent quads SHARING their
+/// vertices so the fan cannot open seams -- which is what killed the earlier stamp fan.
+function anim_shadow_paint(_parts, _s, _g, _ax, _ay, _dst, _main_cam, _cast_surf, _cast_cam) {
+    if (!surface_exists(_dst) || !surface_exists(_cast_surf)) return;
+    // A 256px card leaves 240px above the stable origin and 16px below it.
+    var _size = 256;
+    var _lx = 128, _ly = 240;
+    camera_set_view_pos(_cast_cam, _ax - _lx, _ay - _ly);
+    camera_set_view_size(_cast_cam, _size, _size);
+    surface_reset_target();
+    surface_set_target(_cast_surf);
+    draw_clear_alpha(c_black, 0);
+    camera_apply(_cast_cam);
+    anim_paint(_parts, true);                          // exact palette, without contact blob
+    surface_reset_target();
+    surface_set_target(_dst);
+    camera_apply(_main_cam);
+    var _grey = make_colour_rgb(_s.a255, _s.a255, _s.a255);
+
+    // The sprite lies down on the floor, once. Card-x maps straight through to screen x,
+    // so the nose stays where the nose is: the shadow is the drawn character's own palette
+    // reflected onto the ground, and it turns exactly with it.
+    //
+    // Each column casts along ITS OWN ray out of the light, which is what opens the wedge
+    // with distance -- the two lines running out from the lamp past either side of the
+    // caster -- rather than a parallel strip. Height is measured from the card's own ground
+    // row and the root lands on that same row, so a foot at zero height maps exactly onto
+    // itself and the shadow stays welded to the feet.
+    //
+    // ONE stamp, deliberately. A previous revision stamped the card several times, offset
+    // sideways, to fake the thickness a flat cutout does not have. It cost exactly what
+    // stamping always costs: the overlapping copies blurred the palette into a dithered
+    // slab, and because each copy rooted on its own line the union's near edge pulled away
+    // from the hooves and the legs came unstuck. Both of those were the smear, not the
+    // projection. The honest trade is that with the lamp nearly in line with the caster's
+    // own axis there is genuinely nothing side-on to cast, and the shadow goes thin there.
+    //
+    // Column-varying direction is not affine, so this cannot go through draw_surface_ext
+    // or one world matrix: it is a textured triangle strip, two vertices per station, with
+    // adjacent quads SHARING them so the fan cannot open seams. Two rows is vertically
+    // exact, the cast being linear in height.
+    shader_set(sh_silhouette);
+    draw_primitive_begin_texture(pr_trianglestrip, surface_get_texture(_cast_surf));
+    var _st = 16;
+    for (var i = 0; i <= _st; i++) {
+        var _u  = -_lx + (i / _st) * _size;
+        // The card's own ground row under this column -- where the rig DREW this column's
+        // feet. It sets both the height a pixel is cast from and where the root lands, and
+        // those two must be the same row or the shadow sits off its own feet.
+        var _vg  = _g.c + _g.t * _u;
+        var _rgx = _s.dx + _u;
+        var _rgy = _s.dy2 + 2 * _vg;
+        var _rl  = max(1, sqrt(_rgx * _rgx + _rgy * _rgy));
+        var _dxs = (_rgx / _rl) * _s.s;
+        var _dys = (_rgy / _rl) * 0.5 * _s.s;
+        var _rx  = _ax + _u;
+        var _ry  = _ay + _vg;
+        var _hT  = _vg + _ly;                 // height of the card's top edge
+        var _uv  = (_u + _lx) / _size;
+        // The strip STOPS at the ground row. Card rows below it are the few pixels of hoof
+        // hanging under the joint, and they carry negative height -- cast as-is they throw
+        // shadow BACKWARDS past the feet towards the lamp.
+        var _uvB = (_vg + _ly) / _size;
+        draw_vertex_texture_colour(_rx + _hT * _dxs, _ry + _hT * _dys, _uv, 0, _grey, 1);
+        draw_vertex_texture_colour(_rx, _ry, _uv, _uvB, _grey, 1);
+    }
+    draw_primitive_end();
     shader_reset();
 }
 
@@ -671,18 +810,24 @@ function anim_blob_scale(_x, _y) {
 /// without erasing its own -- a character standing inside a pool blocks that pool's
 /// light, and its shadow there must stay strong (a shared surface made it float
 /// detached, the near half eaten by its own caster's fade).
-function anim_shadow_char(_L, _rig, _clip, _play, _x, _y, _dir, _look, _is_player) {
+function anim_shadow_char(_L, _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
+                          _dst, _main_cam, _cast_surf, _cast_cam) {
     var _s = anim_light_shadow(_L, _x, _y);
     if (_s == undefined) return;
+    // The DRAWN facing: the shadow is the character you are looking at, laid down.
+    var _g = anim_shadow_ground(_rig, _dir, _is_player);
     var _p = anim_build(anim_scratch(), _rig, _clip, _play, _x, _y, _dir, _look, _is_player);
-    anim_shadow_paint(_p, _s);
+    anim_shadow_paint(_p, _s, _g, _x, _y, _dst, _main_cam, _cast_surf, _cast_cam);
 }
 
-/// The mount-and-rider version: both shear against the mount's ground anchor and light,
-/// so the pair stamps as one silhouette.
-function anim_shadow_pair(_L, _h) {
+/// The mount-and-rider version uses one assembled palette and the mount's stable object
+/// origin. A gallop can lift every hoof without making the projected card jitter between
+/// whichever animated leg happens to be lowest that frame.
+function anim_shadow_pair(_L, _h, _dst, _main_cam, _cast_surf, _cast_cam) {
     var _s = anim_light_shadow(_L, _h.x, _h.y);
     if (_s == undefined) return;
+    // Drawn facings throughout, so the pair's shadow is the pair you are looking at.
+    var _g = anim_shadow_ground(_h.rig, _h.direction, false);
     var _p = anim_scratch();
     if (_h.rider != noone) {
         var _r = _h.rider;
@@ -690,7 +835,7 @@ function anim_shadow_pair(_L, _h) {
                    anim_mount_state(_h.rig, _h.direction));
     }
     anim_build(_p, _h.rig, _h.clip, _h.play, _h.x, _h.y, _h.direction, _h.look, false);
-    anim_shadow_paint(_p, _s);
+    anim_shadow_paint(_p, _s, _g, _h.x, _h.y, _dst, _main_cam, _cast_surf, _cast_cam);
 }
 
 /// The shared parts list, emptied and handed out. One character (or one mount + rider
@@ -712,3 +857,6 @@ function anim_draw(_rig, _clip, _play, _x, _y, _dir, _look, _is_player) {
     anim_paint(_p);
     anim_light_sheen(_p, _x, _y);
 }
+
+
+

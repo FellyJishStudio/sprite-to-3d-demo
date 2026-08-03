@@ -22,6 +22,14 @@
     "",
     "gait: obj_horse/Step_0.gml:634-636 idles on sq_horse_idle_state, not sq_horse_idle.",
     "  offset, not direction-dependent. obj_camera/Step_0.gml:59 uses the same -19. (A cow",
+    "",
+    "",
+    "iso.groundX: rig-space x of the back and front hoof columns (sq_horse_idle_state frame 0,",
+    "  the leg *down joints sit at x -5 and +26). The cast-shadow baseline tilts through the",
+    "  ground rows of those two columns (anim_shadow_ground), because the front legs are in",
+    "  the iso `front` list: their hooves ride the full tilt and stand on a DIFFERENT screen",
+    "  row than the back hooves at most facings. A level baseline reads that as height and",
+    "  casts it along the light ray, detaching the front-leg shadows.",
     "mount: moved OUT of this file and into horse.rig.json, alongside isoTilt -- it is rig data the editor edits and saves, not a demo-local tweak."
   ],
   "depth": {
@@ -110,7 +118,8 @@
     "flat": [
       "bone_horse_tail"
     ],
-    "legAmp": 0
+    "legAmp": 0,
+    "groundX": [-5, 26]
   },
   "shadow": [
     {
@@ -138,3 +147,4 @@
     "run": "sq_horse_run"
   }
 }
+

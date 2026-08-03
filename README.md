@@ -263,10 +263,15 @@ source project, not the 5 this demo ships.
 | `Space` | draw / sheathe the sword |
 | `R` | shuffle the character's look |
 | `[wave]` button | wave the right hand — a **Z-axis** animation: the hand sweeps side to side facing the camera, mirrors facing away, and collapses to nothing in profile, because z projects into screen x through `-sin(direction)` exactly as x projects through `cos(direction)`. Spin while waving to see it. |
-| `L` | place a **light** at the cursor (two exist at boot, six max). Every character in range casts a shadow of its *animated pose*: the shadow is a second `anim_build` pass whose joints are laid onto the ground (`joint + k·height` away from the light, `k = groundDist/lightHeight`) **before** the bones aim at each other — so the same point-at-next-joint stretch that keeps the standing figure connected keeps its shadow connected and correctly elongated. The isometric 1:2 ground supplies the direction and the metric (a light reaches twice as far along x as along screen-y); glow pools are 2:1 ellipses. Stateless, recomputed per frame. |
+| `L` | place a **light** at the cursor (two exist at boot, six max). Every character in range casts a shadow of its *animated pose*: the already assembled, depth-sorted palette is rendered once to a transparent card (a horse and rider share one card), then that whole card is rotated and stretched away from the light using the isometric 1:2 ground metric. Its pivot is the character or mount's stable object origin, not an animated hoof, so a gallop can lift every leg without snapping the shadow root. A short tapered root joins the transparent card pivot to the visible silhouette without following a moving leg. The card flips horizontally while the caster is clearly below the light, with a roughly 15° screen-space unflipped band around 0°/180° to preserve the expected head/tail orientation at near-horizontal angles. Glow pools are 2:1 ellipses. |
 | right-click a horse | ride menu, then click **Ride** / **Dismount** |
 | hold left on a horse | the same menu, for anyone without a right button (0.4 s) |
 | `[+10] [+50] [-10] [reset]` | spawn or remove skeletons |
+
+At startup, a projection regression check samples 1,441 bearings at quarter-degree
+increments. It verifies the intended determinant sign in each orientation region, the
+away-from-light cast axis, exact reconstruction of the object-origin pivot, and continuity
+within each region.
 
 HUD readouts: `fps`, `fps_real`, the skeleton count and the current zoom. **`fps_real` is
 the one that matters** — `fps` is capped at the room speed, `fps_real` is how many frames

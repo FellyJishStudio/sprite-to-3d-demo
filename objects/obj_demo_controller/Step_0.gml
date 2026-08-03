@@ -1,4 +1,4 @@
-if (keyboard_check_pressed(vk_f1)) {
+﻿if (keyboard_check_pressed(vk_f1)) {
     global.anim_debug_depth = variable_global_exists("anim_debug_depth")
         ? !global.anim_debug_depth : true;   // F1: paint-order + depth overlay
 }
@@ -105,3 +105,35 @@ if (mouse_check_button_pressed(mb_right)) {
     menu_open = (_near != noone);
     if (menu_open) { menu_target = _near; menu_x = _gx; menu_y = _gy; }
 }
+
+// ---- TEMPORARY shadow contact sheet (remove after use) ----
+// Freezes one horse under one lamp and steps it round eight facings, saving a screenshot
+// at each, so the cast can be judged from images rather than from description.
+if (global.anim_ready && environment_get_variable("THRONE_SHOTS") == "1") {
+    if (!variable_instance_exists(id, "shot_n")) { shot_n = 0; shot_t = 0; }
+    var _h = instance_find(obj_demo_horse, 0);
+    if (_h != noone) {
+        with (obj_demo_player)   instance_destroy();
+        with (obj_demo_skeleton) instance_destroy();
+        // Put the horse wherever the camera already is, rather than fighting the demo's
+        // own zoom/follow logic for control of the view.
+        var _cam = view_camera[0];
+        _h.x = camera_get_view_x(_cam) + camera_get_view_width(_cam) * 0.5;
+        _h.y = camera_get_view_y(_cam) + camera_get_view_height(_cam) * 0.5;
+        global.demo_lights = [];
+        demo_add_light(_h.x - 175, _h.y - 60);        // lamp to the LEFT (repro of the report)
+        _h.direction = shot_n * 45;   // 0 = facing right/east
+        _h.face      = shot_n * 45;
+        _h.clip      = _h.rig.gait.idle;
+        _h.play      = 0;
+        shot_t++;
+        if (shot_t > 4) {
+            screen_save("facing_" + string(shot_n * 45) + ".png");
+            shot_t = 0;
+            shot_n++;
+            if (shot_n >= 8) game_end();
+        }
+    }
+}
+
+
