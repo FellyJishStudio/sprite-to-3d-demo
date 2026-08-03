@@ -1,15 +1,41 @@
-/// Loads the pipeline data, owns the HUD, the camera zoom, the spawner and the ride menu.
+﻿/// Loads the pipeline data, owns the HUD, the camera zoom, the spawner and the ride menu.
 /// Created first (see the room's instanceCreationOrder) so the rigs exist for everyone else.
 
 anim_boot();          // asynchronous; the cast is spawned in Step once it finishes
 randomize();
+// Timed, and the time is reported: this runs before the first frame, so its cost is dead
+// air on a black window. Only the cheap projection sweep is on this path. The exhaustive
+// flicker/mirror grid is 173,000 samples with a search inside each -- about forty seconds
+// in the VM, which read as a hang at "About to startroom" -- so it runs on demand instead:
+// F2 here, or THRONE_TEST=1 in the environment for an automated run. It keeps its full
+// resolution that way rather than being thinned until it stops catching things.
+var _t0 = get_timer();
 var _shadow_test_error = anim_shadow_regression_test();
+var _shadow_test_ms = (get_timer() - _t0) / 1000;
+shadow_sweep = "";            // last exhaustive-sweep result, shown on the HUD
+
+if (_shadow_test_error == "" && environment_get_variable("THRONE_TEST") == "1") {
+    _shadow_test_error = anim_shadow_flicker_test();
+    var _w = global.anim_shadow_worst;
+    show_debug_message("SHADOW worst jump " + string_format(_w.jump, 1, 2) + "px ("
+                     + _w.where + ")   narrowest x-scale "
+                     + string_format(_w.xscale, 1, 2) + " (" + _w.xwhere + ")"
+                     + "   narrow " + string_format(100 * _w.narrow / max(1, _w.total), 1, 1)
+                     + "% of " + string(_w.total));
+}
 if (_shadow_test_error != "") {
+    // Logged BEFORE the dialog: show_error puts up a modal window and writes nothing to
+    // stdout, so a headless or automated run just stops dead at "About to startroom" with
+    // no reason given. The message is the whole value of the check.
+    show_debug_message("SHADOW regression=FAIL " + _shadow_test_error);
     show_error("Shadow projection regression: " + _shadow_test_error, true);
 } else {
-    show_debug_message("SHADOW regression=PASS samples=1441 step=0.25deg");
+    show_debug_message("SHADOW regression=PASS  projection 1441 samples ("
+                     + string_format(_shadow_test_ms, 1, 0) + " ms)"
+                     + "  -- F2 for the exhaustive flicker/mirror sweep");
 }
 
+global.anim_debug_cast = (environment_get_variable("THRONE_SHOTS") != "");
 spawned = false;
 
 // Point lights: each casts an animated shadow of every character in range (see
@@ -23,10 +49,25 @@ shadow_surfs = [];            // one scratch surface PER LIGHT for the cast-shad
 caster_size = 256;
 caster_surf = -1;
 caster_cam = camera_create();
-function demo_add_light(_x, _y) {
+/// `h` is the lamp's height above the ground plane, and it is the only thing that sets how
+/// long a shadow gets: anim_light_shadow casts a caster's height times ground-distance over
+/// h. `rise` makes this one climb and sink so that relationship is visible -- shadows
+/// stretching out as it drops, pulling in as it lifts. Exactly one lamp in the room gets
+/// it; a second, fixed one is left alone as a reference to compare against.
+function demo_add_light(_x, _y, _rise = false) {
     if (array_length(global.demo_lights) >= 6) return;      // enough for a demo room
-    array_push(global.demo_lights, { x: _x, y: _y, h: 60, r: 340 });
+    array_push(global.demo_lights,
+        { x: _x, y: _y, h: LIGHT_H_MID, r: 340, rise: _rise, t: 0 });
 }
+
+/// The band the rising lamp travels through, and how fast. The floor is kept well clear of
+/// zero: h divides into the shadow length, so a lamp at ground level would ask for an
+/// infinite one (the 1.6 cap in anim_light_shadow is what actually stops it, but a lamp
+/// that low reads as broken rather than as low).
+#macro LIGHT_H_MIN 26
+#macro LIGHT_H_MAX 150
+#macro LIGHT_H_MID 60
+#macro LIGHT_RISE_SPEED 0.55        // radians per second
 
 depth       = 20000;          // the ground grid draws behind every character
 // Numeric second element = spawner action; the string "wave" starts the player's wave.
@@ -72,4 +113,5 @@ function demo_kill(_n) {
     with (obj_demo_skeleton) array_push(_all, id);
     for (var i = 0; i < min(_n, array_length(_all)); i++) instance_destroy(_all[i]);
 }
+
 

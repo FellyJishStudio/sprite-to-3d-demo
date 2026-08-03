@@ -107,6 +107,33 @@ if (global.anim_ready) {
     gpu_set_blendmode(bm_normal);
 }
 
+// F3: the cast's own geometry, drawn over the finished shadows.
+//
+// Two red dots at the ground points the shadow's width is measured between -- the rig's own
+// hoof columns, put back on the floor through the projection -- and the two rays out of the
+// NEAREST lamp that graze them. The shadow is meant to be exactly what lies between those
+// rays, so this turns that claim into something visible: grey outside the wedge, or wedge
+// with no grey in it, is the bug, on screen, at the facing it happens.
+//
+// Drawn after the composite so it sits on top, and from the same calls the renderer makes
+// so it cannot quietly disagree with what was painted.
+if (global.anim_ready && variable_global_exists("anim_debug_cast") && global.anim_debug_cast) {
+    var _nl2 = array_length(global.demo_lights);
+    with (obj_demo_horse) {
+        // Nearest lamp only. Every lamp at once is four wedges over one horse and reads as
+        // noise; the one throwing the shadow being looked at is the one in question.
+        var _best = -1, _bd = 999999;
+        for (var i = 0; i < _nl2; i++) {
+            var _Ld = global.demo_lights[i];
+            var _d2 = point_distance(x, y, _Ld.x, _Ld.y);
+            if (_d2 < _bd) { _bd = _d2; _best = i; }
+        }
+        if (_best >= 0) {
+            anim_shadow_debug(global.demo_lights[_best], rig, direction, false, x, y);
+        }
+    }
+}
+
 // Walk destination. The client draws the same thing -- an outlined 10x6 ellipse at
 // target_x/target_y, yellow for a ground target (obj_player/Draw_0.gml:63-65). It leaves it
 // up permanently; here it goes away on arrival, and sits at this depth so characters walk

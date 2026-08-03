@@ -313,6 +313,13 @@ function anim_boot() {
     global.anim_left  = 0;       // outstanding requests in this stage
     global.anim_stage = 0;
     global.anim_error = "";      // set to the path of the first file that fails to load
+    // Live copy of the cast-shadow width floor, so it can be dialled while the demo runs
+    // instead of rebuilt for each value. The macro is the starting point; the renderer
+    // reads this. See ANIM_SHADOW_MIN_FOLD.
+    global.anim_shadow_min_fold = ANIM_SHADOW_MIN_FOLD;
+    // Extra pixels of separation between the two measured shadow edges, on top of the
+    // fold above. K and L in the demo; the F3 overlay draws exactly this gap.
+    global.anim_shadow_edge = 0;
     anim_fetch("clips.json");
 }
 
@@ -375,5 +382,6 @@ function anim_async() {
     global.anim_ready = true;
     return true;
 }
+
 
 

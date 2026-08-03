@@ -2,22 +2,154 @@
     global.anim_debug_depth = variable_global_exists("anim_debug_depth")
         ? !global.anim_debug_depth : true;   // F1: paint-order + depth overlay
 }
+
+// F3: the cast-geometry overlay -- the measured shadow edges and the lamp's two rays
+// through them. Drawn in Draw_0; see the note there.
+if (keyboard_check_pressed(vk_f3)) {
+    global.anim_debug_cast = variable_global_exists("anim_debug_cast")
+        ? !global.anim_debug_cast : true;
+}
+
+// F2: the exhaustive flicker/mirror sweep, at the CURRENT dial setting among the rest.
+// It is off the boot path because it takes about forty seconds (see Create), so it is worth
+// saying so on screen first -- otherwise the freeze it causes looks like the bug.
+if (keyboard_check_pressed(vk_f2)) {
+    shadow_sweep = "running...";
+} else if (shadow_sweep == "running...") {
+    var _t0 = get_timer();
+    var _err = anim_shadow_flicker_test();
+    var _ms  = string_format((get_timer() - _t0) / 1000, 1, 0) + " ms";
+    shadow_sweep = (_err == "") ? ("sweep PASS (" + _ms + ")") : ("sweep FAIL " + _err);
+    show_debug_message("SHADOW " + shadow_sweep);
+}
 // Nothing exists until the data is in. The room holds only this controller, so no object
 // can read a rig before it is loaded -- which is what makes async loading safe.
 if (!global.anim_ready) exit;
 if (!spawned) {
     spawned = true;
-    instance_create_depth(room_width / 2, room_height / 2, 0, obj_demo_player);
-    instance_create_depth(room_width / 2 + 240, room_height / 2 - 60, 0, obj_demo_horse);
+    var _pl = instance_create_depth(room_width / 2, room_height / 2, 0, obj_demo_player);
+    var _ho = instance_create_depth(room_width / 2 + 240, room_height / 2 - 60, 0, obj_demo_horse);
+    // Start mounted -- exactly the pair of assignments the ride menu makes below, and for
+    // the same reason both go through locals: `some_instance.field = x` is not a valid
+    // assignment target in GML. Nothing here places or poses the rider; it pulls itself
+    // onto the saddle and swaps to its ride clip on its own next Step.
+    _ho.rider = _pl.id;
+    _pl.mount = _ho;
     view_object[0] = obj_demo_player;      // the room's follow target, now that it exists
     demo_spawn(3);
     demo_add_light(room_width / 2 - 150, room_height / 2 - 90);
     // Close enough to the horse's spawn that it casts from the first frame -- the iso
     // metric doubles the y separation, so a light "just below" is further than it looks.
-    demo_add_light(room_width / 2 + 250, room_height / 2 + 10);
+    // This is the one that rises and sinks; the other stays put to compare against.
+    demo_add_light(room_width / 2 + 250, room_height / 2 + 10, true);
 }
 
-if (keyboard_check_pressed(ord("L"))) demo_add_light(mouse_x, mouse_y);
+// Height is what sets shadow length, so the rising lamp is the whole demonstration: its
+// shadows stretch as it sinks and pull in as it climbs. Eased with a sine so it lingers at
+// both ends rather than sweeping through them.
+for (var i = 0; i < array_length(global.demo_lights); i++) {
+    var _L = global.demo_lights[i];
+    if (!_L.rise) continue;
+    _L.t += LIGHT_RISE_SPEED * (delta_time / 1000000);
+    _L.h = LIGHT_H_MIN + (LIGHT_H_MAX - LIGHT_H_MIN) * (0.5 - 0.5 * cos(_L.t));
+}
+
+// N, not L: L now drags the shadow's measured edges apart (below), and a key that both
+// spawned a light and widened a shadow made every experiment with one contaminate the other.
+if (keyboard_check_pressed(ord("N"))) demo_add_light(mouse_x, mouse_y);
+
+// O and P dial the cast-shadow width floor live, so values can be compared on screen
+// instead of by rebuilding for each one. Held down they repeat, since finding the right
+// number means sweeping it and watching; shift makes the step coarse. Zero turns the floor
+// off, which is worth a look -- that is the shadow collapsing to a hairline as a caster
+// comes round to face its lamp.
+//
+// LETTER keys on purpose. ord() returns an ASCII code and keyboard_check wants a virtual
+// key code; those agree for letters and digits but not for punctuation, so ord("[") would
+// silently check something else entirely.
+var _fold_step = keyboard_check(vk_shift) ? 0.02 : 0.005;
+if (keyboard_check(ord("O"))) {
+    global.anim_shadow_min_fold = max(0, global.anim_shadow_min_fold - _fold_step);
+}
+if (keyboard_check(ord("P"))) {
+    global.anim_shadow_min_fold = min(1.2, global.anim_shadow_min_fold + _fold_step);
+}
+
+// THRONE_SHOTS=<n>: contact-sheet mode. Clears the room to one horse under one lamp, steps
+// it through n evenly spaced facings, saves a screenshot of each and quits. Shadow bugs are
+// reported from the screen and argued about from numbers, and the numbers kept agreeing
+// with a model that did not match the renderer -- so being able to LOOK at a full turn,
+// cheaply and identically each time, is worth the twenty lines it costs. Inert without the
+// variable set -- and it has to genuinely survive that, since this runs on every launch:
+// environment_get_variable returns "" for a variable that is not set and real("") THROWS,
+// which took down the ordinary demo on the first frame the horse existed.
+var _shots_env = environment_get_variable("THRONE_SHOTS");
+var _shots = (_shots_env != "" && string_digits(_shots_env) == _shots_env)
+           ? real(_shots_env) : 0;
+if (_shots > 0) {
+    var _h = instance_find(obj_demo_horse, 0);
+    if (_h != noone) {
+        if (!variable_instance_exists(id, "shot_n")) { shot_n = 0; shot_t = 0; }
+        // Unhook the rider BEFORE destroying it. The demo spawns mounted, and a horse still
+        // holding a destroyed rider id is not `noone`, so the pair draw reads a dead
+        // instance and the run dies before it can save anything.
+        _h.rider = noone;
+        with (obj_demo_player)   { mount = noone; instance_destroy(); }
+        with (obj_demo_skeleton) instance_destroy();
+        var _cam = view_camera[0];
+        _h.x = camera_get_view_x(_cam) + camera_get_view_width(_cam) * 0.5;
+        _h.y = camera_get_view_y(_cam) + camera_get_view_height(_cam) * 0.5;
+        // One lamp, close enough to be well inside its radius: the iso metric doubles the y
+        // separation, so a light placed by eye is further away than it looks and a caster
+        // out of range casts nothing at all.
+        global.demo_lights = [];
+        var _face;
+        if (environment_get_variable("THRONE_ORBIT") == "1") {
+            // The reported scenario: RUNNING A LAP AROUND THE LAMP rather than turning on
+            // the spot. The lamp stays put in the middle of the view and the horse walks a
+            // ground-space circle round it, facing along its own travel -- so its facing
+            // and the lamp's direction move together, which is the pairing that inverted
+            // the shadow twice a lap. A screen circle would not do: the 2:1 metric makes
+            // the ground path an ellipse, and the crossings sit at different places on it.
+            var _orb = shot_n * (360 / _shots);
+            var _rad = 130;
+            demo_add_light(_h.x, _h.y);
+            _h.x += _rad * dcos(_orb);
+            _h.y += _rad * dsin(_orb) * 0.5;
+            _face = point_direction(0, 0, -_rad * dsin(_orb), _rad * dcos(_orb) * 0.5);
+        } else {
+            demo_add_light(_h.x - 200, _h.y - 30);
+            _face = shot_n * (360 / _shots);
+        }
+        _h.direction = _face;
+        _h.face      = _face;
+        _h.clip      = _h.rig.gait.idle;
+        _h.play      = 0;                      // same pose every shot, so only facing varies
+        shot_t++;
+        if (shot_t > 3) {                      // a few frames for the facing ease to settle
+            // Zero-padded by hand: string_format pads with SPACES, which lands the shots
+            // under names like "facing_ 15.png" and sorts them wrongly besides.
+            var _tag = string(round(shot_n * (360 / _shots)));
+            while (string_length(_tag) < 3) _tag = "0" + _tag;
+            screen_save("facing_" + _tag + ".png");
+            shot_t = 0;
+            shot_n++;
+            if (shot_n >= _shots) game_end();
+        }
+    }
+}
+
+// K and L drag the two measured shadow edges apart, in pixels, on top of whatever O/P asks
+// for. This is the number the F3 overlay draws -- the gap between the red dots across the
+// ray -- so it can be pushed while watching the thing it controls, which is the only way
+// any of these values have actually been settled. Held to repeat; shift makes it coarse.
+var _edge_step = keyboard_check(vk_shift) ? 4 : 1;
+if (keyboard_check(ord("K"))) {
+    global.anim_shadow_edge = max(0, global.anim_shadow_edge - _edge_step);
+}
+if (keyboard_check(ord("L"))) {
+    global.anim_shadow_edge = min(240, global.anim_shadow_edge + _edge_step);
+}
 
 var _gx = device_mouse_x_to_gui(0), _gy = device_mouse_y_to_gui(0);
 
@@ -105,35 +237,4 @@ if (mouse_check_button_pressed(mb_right)) {
     menu_open = (_near != noone);
     if (menu_open) { menu_target = _near; menu_x = _gx; menu_y = _gy; }
 }
-
-// ---- TEMPORARY shadow contact sheet (remove after use) ----
-// Freezes one horse under one lamp and steps it round eight facings, saving a screenshot
-// at each, so the cast can be judged from images rather than from description.
-if (global.anim_ready && environment_get_variable("THRONE_SHOTS") == "1") {
-    if (!variable_instance_exists(id, "shot_n")) { shot_n = 0; shot_t = 0; }
-    var _h = instance_find(obj_demo_horse, 0);
-    if (_h != noone) {
-        with (obj_demo_player)   instance_destroy();
-        with (obj_demo_skeleton) instance_destroy();
-        // Put the horse wherever the camera already is, rather than fighting the demo's
-        // own zoom/follow logic for control of the view.
-        var _cam = view_camera[0];
-        _h.x = camera_get_view_x(_cam) + camera_get_view_width(_cam) * 0.5;
-        _h.y = camera_get_view_y(_cam) + camera_get_view_height(_cam) * 0.5;
-        global.demo_lights = [];
-        demo_add_light(_h.x - 175, _h.y - 60);        // lamp to the LEFT (repro of the report)
-        _h.direction = shot_n * 45;   // 0 = facing right/east
-        _h.face      = shot_n * 45;
-        _h.clip      = _h.rig.gait.idle;
-        _h.play      = 0;
-        shot_t++;
-        if (shot_t > 4) {
-            screen_save("facing_" + string(shot_n * 45) + ".png");
-            shot_t = 0;
-            shot_n++;
-            if (shot_n >= 8) game_end();
-        }
-    }
-}
-
 

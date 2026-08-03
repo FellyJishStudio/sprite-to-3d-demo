@@ -511,17 +511,111 @@ function anim_light_shadow(_L, _gx, _gy) {
 /// the light ray: the front-leg shadows detach by tilt times cast length. Tilting the
 /// line through both hoof rows pins both pairs, and it is still one linear map.
 ///
-/// The slope fades out quadratically as foreshortening stacks the two hoof columns
-/// (facing toward/away from camera, dcos -> 0): there both rows share one column and no
-/// single line can hold them, so the line relaxes to level through the NEAR pair's row
-/// -- the contact points the eye checks stay pinned, and the far pair, mostly hidden
-/// behind the body at those facings, absorbs the error. The slide is continuous at
-/// every facing instead of popping at the degenerate one.
+/// The two rows are also held a minimum distance apart. Near broadside the tilt vanishes
+/// and they coincide, which flattens the baseline and leaves the cast nothing to open a
+/// wedge with -- the shadow thins to a streak. The horse's feet are genuinely that far
+/// apart on the floor; the drawing just has no room left to say so at that facing, so the
+/// baseline says it instead. The slope is clamped rather than faded out, because fading
+/// was what discarded the separation exactly where it mattered most.
 ///
 /// Scratch struct, same contract as anim_facing: valid until the next call, consumed by
 /// anim_shadow_paint before another character builds.
+
+/// Ceiling on the baseline's slope, for when the two hoof columns stack face-on and the
+/// run under that separation goes to zero.
+#macro ANIM_SHADOW_MAX_SLOPE 0.4
+/// Smallest angle, as a determinant, allowed between the baseline and the cast direction.
+/// At zero the card folds onto a line and the shadow vanishes; this is the floor under
+/// its width when the caster points straight at the lamp. Roughly: width in pixels is
+/// about 46 times this. See anim_shadow_paint.
+/// This is the STARTING value only. anim_boot copies it into
+/// `global.anim_shadow_min_fold`, which is what the renderer actually reads, so it can be
+/// tuned live -- [ and ] in the demo, with the current value on the HUD.
+#macro ANIM_SHADOW_MIN_FOLD 0.52
+/// Floor under the shadow's horizontal scale. At zero the sprite squashes to a line and
+/// then comes out MIRRORED, columns in reverse order; this keeps a quarter of the width
+/// no matter how far the lean is pushed. It bounds the O/P dial rather than the dial
+/// bounding itself, so no setting can invert the shadow. See anim_shadow_paint.
+#macro ANIM_SHADOW_MIN_XSCALE 0.25
+
+/// The most the width guard may lean the baseline away from where the rig drew it, as a
+/// slope. It is a bound on the guard's PAYMENT, not on the baseline: the natural slope is
+/// bounded separately by ANIM_SHADOW_MAX_SLOPE and never comes near this.
+///
+/// It exists because leaning buys width at a rate of `ux`, so unbounded demands cost
+/// unbounded slope as the lamp comes into line with the caster -- and `ux` sweeps through
+/// there twice a lap when something runs a circle round a lamp. See anim_shadow_lean.
+///
+/// SIZED FROM THE WIDTH, not picked to be safe. The allowance goes as `ux*ux`, so the full
+/// floor is affordable while `MAX_LEAN * ux*ux` covers the gap the guard has to close --
+/// which needs about 1.2 at the broadside angles where that gap is widest. At 0.6 it was
+/// under half of that, and the floor silently collapsed to a third of the dial's setting
+/// across ordinary lamp angles: 45% of the sweep came out under four fifths of the width
+/// asked for, which is the shadow going thin again. Doubling the margin on 1.2 costs
+/// nothing anywhere the guard is not already engaged.
+///
+/// Toward `ux = 0` no finite value delivers the whole floor, but nothing is needed there:
+/// with the cast near vertical the natural fold is already about 0.48 against a 0.52 dial,
+/// so the shortfall is a few percent of width rather than a collapse.
+#macro ANIM_SHADOW_MAX_LEAN 2.5
+
+/// How far the shadow may move between one facing and the next half-degree, in pixels, at
+/// the caster's own drawn height. Anything sharper than this is a step rather than a turn.
+///
+/// Where the number comes from: with the bar lifted and the whole grid measured, the worst
+/// anywhere at the shipped 0.52 setting is 5.05px, and it is at a lamp 35px away -- closer
+/// to the horse than the horse is long. Everything further out is far below it. Six leaves
+/// that corner a little room without admitting a new artifact; the three artifacts this
+/// sweep has caught so far measured 63.5, 33.6 and 6.0px, all of them well clear of it.
+///
+/// The bar is only half the check. global.anim_shadow_worst carries the largest movement
+/// and the narrowest width actually seen and both are printed on every run, pass or fail,
+/// so drift toward the bar is visible instead of silent.
+#macro ANIM_SHADOW_MAX_JUMP 6
+
+/// The cast card. 256 square, with 240px above the stable origin and 16px below it, walked
+/// in 16 stations. Macros because the renderer and the regression tests must walk the SAME
+/// card: a test that samples a different span measures a different projection.
+#macro ANIM_SHADOW_CARD     256
+#macro ANIM_SHADOW_CARD_LX  128
+#macro ANIM_SHADOW_CARD_LY  240
+#macro ANIM_SHADOW_STATIONS 16
+
+/// How tall the drawn caster stands above its own ground row -- a mounted rider, with room
+/// to spare. The strip runs out to the card's edge because that is where the texture's top
+/// row is, but everything above this is transparent, so this is the height the guards and
+/// the sweep judge at. Judging at the card edge instead scales every wobble by more than
+/// four and condemns movement nothing can see.
+#macro ANIM_SHADOW_TALL     72
+
+/// And how far to either side of its origin the drawn caster reaches. The horse is about
+/// 46px nose to tail, a rider adds height rather than width; this has room to spare.
+///
+/// The card is 256 wide because the SHADOW stretches, not because the caster does, so most
+/// of it is transparent. Judging the guards across the whole width is not merely wasteful,
+/// it is wrong: with the lamp closer than half a card the outer columns sit on the FAR SIDE
+/// of it, their direction away from it reverses, and the strip really does fold out there.
+/// Throttling the wedge to keep empty space in order cost 63px of shadow jumping about on a
+/// caster passing close to a lamp -- and the fold it was avoiding is invisible, since those
+/// columns have no pixels in them.
+#macro ANIM_SHADOW_WIDE     48
+
+/// The caster's body depth: how wide its ground footprint stays when it is stood exactly
+/// end-on to the lamp and the flat card has nothing left to show. A horse is about twelve
+/// pixels through the shoulders. Only ever an addend to the caster's own projected extent,
+/// so it sets where the O/P dial starts having to do work rather than a width by itself.
+#macro ANIM_SHADOW_BODY     12
+
+/// How far above its own ground row to read a caster's outline when laying the footprint
+/// band. Low enough to still be the body rather than the head, high enough to clear the
+/// legs -- a horse's barrel sits about here, and a rider's torso above that.
+#macro ANIM_SHADOW_BELLY    22
+
 function anim_shadow_ground(_rig, _dir, _is_player) {
-    static _g = { t: 0, c: 0 };
+    // ub/uf are the back and front hoof columns -- the two card-x the shadow's width is
+    // actually measured between. Carried out so the debug overlay marks the SAME points the
+    // projection uses rather than a second guess at them.
+    static _g = { t: 0, c: 0, w: 1, d: 0, px: 0, py: 0, ub: 0, uf: 0 };
     _g.t = 0;
     _g.c = 0;
     var _iso = _rig.iso;
@@ -529,25 +623,117 @@ function anim_shadow_ground(_rig, _dir, _is_player) {
     var _gx = _iso[$ "groundX"];
     if (_gx == undefined) return _g;
     var _f = anim_facing(_rig, _dir, _is_player);
-    // The same tilt anim_build applies, zeroing included, or this line would disagree
-    // with the drawn hooves it exists to pin.
+    // The tilt anim_build applies -- but deliberately NOT its pixel rounding.
+    //
+    // anim_build also steps the back legs a pixel, and snaps a sub-pixel tilt to zero, as
+    // the caster crosses from facing-away to facing-toward. On the drawn horse that is one
+    // pixel of quantisation and nobody sees it. Fed into this baseline it is a step in the
+    // SLOPE, and the projection multiplies slope by the caster's height and again by the
+    // cast length: a pixel of rounding came back out as 4.2px of shadow snapping sideways
+    // at that single facing, which is the flicker anim_shadow_flicker_test measures. Both
+    // amplitudes are still honoured, and they meet where the step used to be because the
+    // tilt itself is zero there -- so this tracks the drawn hooves within a pixel and,
+    // unlike them, does it continuously.
     var _iso_y = (_f.down ? _iso.ampDown : _iso.ampUp) * dsin(_f.skew);
-    if (abs(_iso_y) <= 1 && _f.down) _iso_y = 0;
     var _ub = _gx[0] * _f.dcos, _uf = _gx[1] * _f.dcos;
-    var _vb = _f.down ? -1 : 0;      // back legs are iso cls 0: the facing-down step only
-    var _vf = -_iso_y;               // front legs are iso cls 2: full tilt, no step
+    var _vb = 0;                     // back legs are iso cls 0: no tilt
+    var _vf = -_iso_y;               // front legs are iso cls 2: full tilt
+
+    // The two hoof rows are used exactly as the rig drew them -- NO minimum separation.
+    //
+    // Forcing them a few pixels apart was once what kept the shadow from thinning to a
+    // streak, and it flickered. The tilt genuinely reverses as the caster turns through
+    // broadside, so the natural separation passes through zero there; forcing a minimum
+    // while keeping its sign turned an honest one-pixel change into a snap between plus
+    // and minus the minimum. That is the flicker around 90 degrees, and it is measured by
+    // anim_shadow_flicker_test. The fold guard in anim_shadow_paint holds the width now,
+    // and it takes its direction from the LAMP, which does not reverse when a caster turns.
+    var _sep = _vf - _vb;
+
+    // Slope of the baseline through the two hoof columns, faded out as those columns
+    // stack up face-on.
+    //
+    // The fade is not optional and removing it is a trap I already fell into. Face-on the
+    // run between the columns passes through zero AND changes sign -- the front feet swing
+    // from one side of the back feet to the other -- so an unfaded slope both blows up and
+    // flips, snapping the shadow across the ground as the caster turns through that
+    // facing. The drawn horse shows nothing of it because it is foreshortened to a sliver
+    // there, but the shadow is not, so it pops.
+    //
+    // Fading costs nothing now: it used to be the only thing holding the shadow open, but
+    // the fold guard in anim_shadow_paint keeps the width instead, and that guard works
+    // off the LIGHT's geometry rather than this run, so it has nothing to divide by zero.
     var _du = _uf - _ub;
-    var _w = 0;
+    var _t  = 0;
     if (abs(_du) >= 1) {
-        var _fade = min(1, abs(_du) / 24);
-        _w = _fade * _fade;
-        _g.t = ((_vf - _vb) / _du) * _w;
+        var _fade = min(1, abs(_du) / 12);
+        _t = clamp(_sep / _du, -ANIM_SHADOW_MAX_SLOPE, ANIM_SHADOW_MAX_SLOPE) * _fade * _fade;
     }
-    // The anchor row slides with the same weight the slope fades by: hoof-pair midpoint
-    // while the slope is live (side-ish views, where the line holds BOTH pairs exactly),
-    // the NEAR pair's row -- the lower-drawn one -- as the columns stack face-on.
-    var _mid = (_vb + _vf) * 0.5;
-    _g.c = (_mid * _w + max(_vb, _vf) * (1 - _w)) - _g.t * (_ub + _uf) * 0.5;
+    _g.t = _t;
+    _g.c = (_vb + _vf) * 0.5 - _g.t * (_ub + _uf) * 0.5;
+
+    // WIDTH, which is now an honest scale on the ground footprint rather than a lean.
+    //
+    // With card-x laid on the ground perpendicular to the ray the shadow's width IS the
+    // caster's own extent across that ray, so it is already right where the caster is
+    // broadside. End-on it is only the body's depth, and a flat card has no depth to give
+    // -- that is the one number the rig genuinely does not carry, and the one the O/P dial
+    // is for. Scaling the perpendicular up to the dial's width fills it in.
+    //
+    // Note what this is NOT: it does not pick a side, it cannot reach zero, and it does
+    // nothing at all once the caster's own extent is wider than the dial asks for. So it
+    // widens the thin case without popping, which is exactly what a lean could never do.
+    // THE OTHER AXIS OF THE SAME FLOOR. The band gives the footprint its depth into the
+    // screen; this gives it its width ACROSS the screen, and a caster needs both.
+    //
+    // The card's own width is the caster's projected length, which is fine broadside and
+    // collapses to the body alone end-on: about 12px for a horse at 90 or 270. A vertical
+    // band under a 12px card is a 12px shadow however deep it is, which is why 90 and 120
+    // stayed thin after the band went in. Stretching the silhouette out to the dial's width
+    // fills it, does nothing at all once the caster is already wider than that, and cannot
+    // reach zero -- so the minimum holds in every direction without anything to flip.
+    var _len = abs(_uf - _ub) + ANIM_SHADOW_BODY;
+    _g.w = max(1, (global.anim_shadow_min_fold * 46) / max(1, _len));
+    _g.ub = _ub;
+    _g.uf = _uf;
+
+    // THE BODY'S DEPTH, which the card does not have and never could.
+    //
+    // The card is one flat cutout of the caster as drawn, so it carries length and height
+    // and nothing across. Side-on to the lamp there is genuinely nothing left to cast and
+    // the shadow goes to a streak -- and every attempt to fake width by LEANING the
+    // baseline failed the same way, because a lean has to choose a side and any choice of
+    // side flips somewhere: at broadside, or at the lamp's own row, or (rotating the axis
+    // to dodge the choice) by reversing the sprite outright.
+    //
+    // Depth has no side. It straddles the body axis, so it is symmetric by construction:
+    // there is nothing to choose and so nothing to flip. `d` is that depth in ground units
+    // and (px, py) is the direction it runs -- perpendicular to the body on the ground,
+    // taken from the caster's OWN facing and never from the lamp, which is what makes it
+    // immune to everything the lamp does. anim_shadow_paint lays a band of it under the
+    // feet; see the second strip there.
+    // Plus whatever K/L have dialled in on top, straight in pixels. The dial above is a
+    // fold that has to be multiplied out to mean anything; this one is the number actually
+    // being judged -- how far apart the two edges are held across the ray -- so it is the
+    // one worth being able to push while looking at the overlay that draws it.
+    _g.d  = global.anim_shadow_min_fold * 46
+          + (variable_global_exists("anim_shadow_edge") ? global.anim_shadow_edge : 0);
+
+    // STRAIGHT DOWN THE SCREEN, at every facing, and NOT along the body's perpendicular.
+    //
+    // The card is one flat cutout, so what it captures is the caster's extent in screen X
+    // and what it is missing is always the same thing: the extent INTO the screen. That is
+    // true whichever way the caster is pointed, so the band that stands in for it always
+    // spreads the same way -- vertically.
+    //
+    // Rotating it with the body instead looks right and is wrong at half the facings. At 0
+    // the body's ground perpendicular is into the screen, so it worked; at 90 the caster
+    // points into the screen and that perpendicular comes out HORIZONTAL, which is the one
+    // direction the card already covers -- so the band widened a shadow that was already
+    // wide and left 90 and 120 as thin as before. The missing dimension does not rotate,
+    // because the thing doing the missing is the flatness of the card, not the pose.
+    _g.px = 0;
+    _g.py = 1;
     return _g;
 }
 
@@ -649,6 +835,601 @@ function anim_shadow_regression_test() {
     return "";
 }
 
+/// ONE station of the cast strip, as offsets from the caster's anchor.
+///
+/// The single place the projection is written down. The renderer, the width guard and the
+/// regression sweep all go through here, so a test cannot come back green against geometry
+/// the screen does not draw -- which is exactly how a mirrored shadow survived a passing
+/// suite: the sweep modelled one cast direction for the whole card while the renderer gave
+/// every column its own.
+///
+/// `_div` is how far each column leans onto its OWN ray out of the lamp: 1 is the full
+/// wedge, 0 a parallel cast. See anim_shadow_spread for why it is not always 1.
+/// `_h` is how far up the column to evaluate, above the card's own ground row. It defaults
+/// to the card's top edge, which is what the strip is drawn to; the guards pass
+/// ANIM_SHADOW_TALL instead so they judge the part that has pixels in it.
+function anim_shadow_station(_s, _g, _tt, _u, _div, _ly, _h = undefined) {
+    // SCRATCH, not a fresh struct, and valid only until the next call -- read what you need
+    // before making another. The renderer walks this hundreds of times per caster per light
+    // per frame and the startup sweep tens of millions of times; returning a new struct put
+    // about thirty seconds in front of the title screen and left a constant allocation
+    // churn in play. Same contract as anim_facing and anim_shadow_ground.
+    static _p = { rx: 0, ry: 0, tx: 0, ty: 0, hT: 0 };
+    var _vg  = _g.c + _tt * _u;                 // the card's own ground row under this column
+
+    // CARD-X LIES ALONG THE GROUND PERPENDICULAR TO THE RAY. Not along screen x.
+    //
+    // This one line is what every width guard in this file's history was patching around.
+    // The card is the caster posed from the LAMP (anim_shadow_dir), so its horizontal axis
+    // is the caster's extent across the light ray -- and on the ground that direction is
+    // (-uy, ux), which is where it has to be laid down. Laying it along screen x instead
+    // put it near enough ALONG the ray whenever the lamp was off to the side, so the card's
+    // width and the shadow's length ran the same way and the silhouette collapsed onto a
+    // line. `fold` was exactly the mismatch between those two directions, and the minimum
+    // fold, the taper, the lean side and the divergence search were all propping it up.
+    //
+    // With the axis where it belongs the two spanning directions are perpendicular in
+    // ground terms by construction, so their determinant is a flat -s/2 whatever the caster
+    // or the lamp does: NEVER zero, never changing sign. The shadow cannot fold flat and
+    // cannot come out mirrored, so there is nothing left for a floor to defend and no sign
+    // for it to pick -- which is what dissolves the width-versus-popping trade entirely.
+    // It is also why a caster standing at 0 or 180 goes wrong today: side-lit, the card is
+    // the horse seen end-on, so card-x is its body DEPTH, and depth laid along screen x
+    // vanishes into the shadow's own length instead of giving it any.
+    // CARD-X MAPS STRAIGHT TO SCREEN X, and it has to.
+    //
+    // The card is the caster posed from the CAMERA (see anim_shadow_cast: "the DRAWN
+    // facing"), so its horizontal axis is the caster as you see it and the nose has to stay
+    // on the side the nose is drawn. Laying it along the ground perpendicular to the ray,
+    // (-uy, ux), is right only for a card posed from the LAMP -- and that factor -uy is
+    // NEGATIVE for every lamp on one side, which reverses card-x and draws the shadow
+    // mirrored across half of all lamp positions. Worse, a test that measures the strip
+    // along that same perpendicular is monotone by construction and cannot see the flip,
+    // which is how it passed at 2.26px while the screen showed a mirrored horse.
+    //
+    // The depth the card lacks is real, and `w` still supplies it -- but as a widening of
+    // this axis, never as a rotation of it.
+    var _w  = _g[$ "w"] ?? 1;
+    var _nx = _w, _ny = 0;
+
+    // The column's own ray, from the lamp past where that column actually stands.
+    var _rgx = _s.dx  + (_u * _nx) * _div;
+    var _rgy = _s.dy2 + 2 * _vg * _div;
+    var _rl  = max(1, sqrt(_rgx * _rgx + _rgy * _rgy));
+    var _dxs = (_rgx / _rl) * _s.s;
+    var _dys = (_rgy / _rl) * 0.5 * _s.s;
+    var _hT  = _vg + _ly;                       // height of the card's top edge here
+    var _he  = (_h == undefined) ? _hT : _h;
+    _p.rx = _u * _nx;           _p.ry = _u * _ny + _vg;   // root, welded to the drawn feet
+    _p.tx = _p.rx + _he * _dxs; _p.ty = _p.ry + _he * _dys;
+    _p.hT = _hT;
+    return _p;
+}
+
+/// True when the strip runs one way across the screen instead of folding back through
+/// itself. Only the tip row can turn over -- the root row is the card's own x, untouched.
+///
+/// The bar is a MARGIN, not merely "forwards". A strip that only just advances is one that
+/// has squashed to a sliver, and a sliver is what reads as the flicker at the facings
+/// either side of a mirror.
+function anim_shadow_forward(_s, _g, _tt, _div, _ly) {
+    return anim_shadow_xscale(_s, _g, _tt, _div, _ly) >= ANIM_SHADOW_MIN_XSCALE;
+}
+
+/// How much per-column divergence this cast can carry before it turns itself inside out.
+///
+/// Each column casting along its own ray is what opens the wedge -- the two lines running
+/// from the lamp past either side of the caster. But the ray direction SWINGS across the
+/// card, and a column's tip rides that swing multiplied by its own height, so with the lamp
+/// close the far columns can overtake the near ones: the strip folds back through itself
+/// and the shadow comes out MIRRORED.
+///
+/// The width guard cannot see this. It holds `1 + tt*ux*s` above a floor, which is the
+/// derivative of a PARALLEL cast; the divergence term is not in it at any setting. So
+/// measure the real strip instead and back the divergence off until every station moves
+/// forwards. Zero is the parallel cast the guard does cover and is always safe, so the
+/// search always lands somewhere -- and it only costs anything on the frames that need it,
+/// since full divergence is the right answer nearly everywhere.
+function anim_shadow_spread(_s, _g, _tt, _ly) {
+    if (anim_shadow_forward(_s, _g, _tt, 1, _ly)) return 1;
+    var _lo = 0, _hi = 1;
+    // Deep enough that the ANSWER, not the search, is what moves between one facing and the
+    // next: the result multiplies a card half-width of 128 against a lamp that may be only
+    // tens of pixels away, so a coarse search quantises the tip into visible steps. Twelve
+    // halvings puts that quantisation a long way under a pixel. It is not free -- this runs
+    // per caster per light on every frame that folds, and the startup sweep runs it tens of
+    // thousands of times -- so it is not set higher for luck.
+    repeat (12) {
+        var _mid = (_lo + _hi) * 0.5;
+        if (anim_shadow_forward(_s, _g, _tt, _mid, _ly)) _lo = _mid; else _hi = _mid;
+    }
+    return _lo;
+}
+
+/// The baseline lean this cast is drawn with: the natural one, widened to the minimum fold
+/// and then floored so the parallel term cannot invert. Shared by the renderer and the
+/// sweep for the same reason anim_shadow_station is.
+/// The baseline lean the cast is drawn with -- now simply the tilt the rig drew, because
+/// there is nothing left for a guard to do.
+///
+/// Everything that used to live here existed to stop the card folding flat, and the card
+/// cannot fold flat once its own axis is laid on the ground perpendicular to the ray: the
+/// determinant is a constant -s/2 (see anim_shadow_station). What is left is the rig's own
+/// hoof-row tilt, which is what pins the shadow to the feet, and it is used as drawn.
+///
+/// Deleted with the guard, and worth naming so they are not reinvented: a minimum fold, a
+/// tapered floor, a lean side taken from the lamp, a bounded lean allowance, a knee, and a
+/// clamp. Each fixed the artifact the one before it caused, and every one of them was
+/// propping up a mismatch that no longer exists. `_minfold` stays in the signature and now
+/// scales WIDTH honestly instead -- see anim_shadow_width.
+function anim_shadow_lean(_s, _g, _minfold) {
+    return _g.t;
+}
+
+/// The dead guard, kept only so the old text is findable next to what replaced it.
+function anim_shadow_lean_legacy(_s, _g, _minfold) {
+    var _tt = _g.t;
+    if (abs(_s.ux) <= 0.01) return _tt;
+
+    // `_fold` is the determinant between the baseline the card stands on and the cast
+    // running out from the lamp: its size is the shadow's width, its SIGN is the shadow's
+    // orientation. Flipping that sign is, exactly, mirroring the caster.
+    var _fold = _tt * _s.ux - _s.uy * 0.5;
+
+    // A TAPERED floor, and the taper is not a nicety -- it is forced.
+    //
+    // No continuous function can hold |fold| at or above a positive minimum while fold
+    // changes sign: it would have to be at least m on one side, at most -m on the other,
+    // and never pass through the zero in between. So a width floor that never lapses and a
+    // shadow that never pops are incompatible, and every earlier revision here traded one
+    // for the other. Forcing the sign from `_fold` popped as a caster turned through
+    // broadside; forcing it from the LAMP moved the pop to where the caster crosses the
+    // lamp's own row -- which reads as fine while a horse turns on the spot and is a
+    // disaster the moment it RUNS AROUND the lamp, because it crosses that row twice every
+    // lap. That was 63px of shadow flipping over mid-stride, at the shipped setting.
+    //
+    // Mirroring is the thing worth refusing, so the width gives way instead: full floor
+    // once the natural fold reaches a quarter of it, tapering to nothing only at the true
+    // degeneracy, where the card really is edge-on to the light and has nothing to cast.
+    // The sign is the natural one throughout and changes only where the magnitude is zero,
+    // so there is no step to see.
+    //
+    // And the floor asks for no more width than a BOUNDED lean can buy.
+    //
+    // Leaning buys width at a rate of `ux`, so the slope it costs is the width wanted
+    // divided by `ux` -- and with the lamp nearly in line with the caster in ground terms
+    // that divisor approaches zero. A hair of missing width is then paid for with an
+    // enormous change of slope, and since `ux` moves as the caster orbits, so does the
+    // payment: 63px of lurch at first, 6px after the sign was fixed, all of it from this
+    // division rather than from anything about the shadow. Capping the WIDTH by
+    // `MAX_LEAN * ux` caps the slope at MAX_LEAN outright, whatever `ux` does.
+    //
+    // Nothing is given up where it matters. With the cast near vertical the card folds flat
+    // only if its baseline lies along it, which needs a slope the baseline never reaches --
+    // so the natural fold is already about a half there, wider than the floor would have
+    // asked for. Broadside, where the collapse is real, `ux` is near one and the full floor
+    // is affordable. This is also what lets the `ux` cutoff above be crossed without a step.
+    var _af   = abs(_fold);
+    // SQUARED, and that is the point rather than a tuning choice. The lean the guard costs
+    // is the extra width over `ux`, so an allowance proportional to `ux` leaves a correction
+    // of a fixed size as `ux` shrinks -- and `ux` passes through zero whenever the lamp
+    // comes into line with the caster, twice a lap for anything circling it. The numerator
+    // keeps its sign across that crossing while the divisor changes sign, so the lean
+    // inverts: 33px of shadow flipping over as a lamp swept past a caster standing still.
+    // Squared, the correction is bounded by MAX_LEAN * |ux| and so fades to nothing at the
+    // crossing, which is also the only value continuous with the cutoff above.
+    var _m    = min(_minfold, _af + ANIM_SHADOW_MAX_LEAN * _s.ux * _s.ux);
+    // WHERE THE KNEE SITS IS THE WHOLE TRADE, and it is worth being exact about.
+    //
+    // Below it the width tapers, and the taper is a gain: the lean comes out as `_m/_knee`
+    // times the natural one, so it multiplies how fast that lean MOVES by the same factor.
+    // Wide knee, smooth shadow, narrow shadow. Narrow knee, full width, sharper movement.
+    //
+    // At half the floor it was far too wide. A caster standing at facing 0 or 180 has a
+    // LEVEL baseline -- the rig draws both hoof rows on one line there -- so its natural
+    // fold is just `uy/2`, about 0.14 under a typical lamp. That sat well inside a 0.26
+    // knee and came out at 0.29 against a 0.52 dial: the 24px shadow delivered as 13px, at
+    // the one facing most likely to be looked at. The taper is meant for the degeneracy,
+    // not for the ordinary broadside pose.
+    var _knee = _m * 0.15;
+    var _mag  = (_knee > 0) ? max(_af, _m * min(1, _af / _knee)) : _af;
+    var _want = (_fold >= 0) ? _mag : -_mag;
+
+    // AND the lean cannot turn the sprite inside out. A column at card-x u lands at
+    // u + h*ux*s and carries the lean in its own height h, so the parallel cast's
+    // horizontal scale is 1 + tt*ux*s -- and tt*ux is `_want + uy/2`, NOT `_want`. Dropping
+    // that uy/2 floored the wrong quantity, which let the scale go negative with the lamp
+    // well above or below the caster however wide the dial was set. This bound is ONE-SIDED,
+    // which is what lets it be both absolute and continuous.
+    _want = max(_want, (ANIM_SHADOW_MIN_XSCALE - 1) / _s.s - _s.uy * 0.5);
+
+    // Bounded because `ux` is a divisor and may be as small as the cutoff above allows. The
+    // natural slope never approaches this; only the guard can, and only where the lamp is
+    // nearly in line with the caster in ground terms.
+    return clamp((_want + _s.uy * 0.5) / _s.ux, -3, 3);
+}
+
+/// Sweeps a caster turning a full circle under a lamp at every angle around it, finely,
+/// and asserts two things at every one of those combinations. Both exist because they were
+/// reported from the screen, and neither showed up in a coarser sweep.
+///
+///   FLICKER  nothing may jump between adjacent facings. A caster's heading eases toward
+///            where it is pointed, so it lingers and wobbles; a step in the shadow at the
+///            facing it settles near reads as a per-frame flicker, not a one-off snap.
+///            Two causes were caught this way: a guard written as "replace it when below
+///            the threshold", which disagreed with the natural value AT the threshold, and
+///            a forced minimum hoof separation, which snapped between plus and minus
+///            itself where the rig's own tilt reverses.
+///
+///   MIRROR   the sprite's own axis must keep pointing the same way -- two card columns
+///            must leave the map in the order they entered it, or the shadow is a mirrored
+///            horse.
+///
+/// The step is deliberately finer than the artifacts are wide. At one degree both bugs
+/// above were stepped straight over and the sweep came back clean.
+///
+/// NOT ON THE BOOT PATH. The full grid is 173,000 samples with a search inside each one and
+/// it takes about forty seconds in the VM -- forty seconds of black window before the demo
+/// appears, which is how it first showed up: a run that looked hung at "About to startroom".
+/// Thoroughness is the point of this sweep, so it keeps its resolution and moves off the
+/// launch instead: F2 in the demo runs it, and so does THRONE_TEST=1 in the environment for
+/// an automated run. anim_shadow_regression_test still runs at every boot; it is cheap.
+/// Debug overlay for the cast: the two ground points the shadow's width is measured
+/// between, and the two rays out of the lamp that graze them. The shadow is supposed to be
+/// what lies between those rays, so drawing them makes the claim checkable instead of
+/// arguable -- if the grey does not fill the wedge, the picture says so immediately.
+///
+/// Read straight out of the same anim_shadow_ground and anim_shadow_station the renderer
+/// uses. That matters: a debug view that recomputes the geometry its own way agrees with
+/// whatever it believes rather than with what is on screen, which is how a green sweep sat
+/// on top of a mirrored shadow for most of this file's history.
+///
+/// F3 in the demo. World space, so it must be drawn from a world Draw event.
+function anim_shadow_debug(_L, _rig, _dir, _is_player, _x, _y) {
+    var _s = anim_light_shadow(_L, _x, _y);
+    if (_s == undefined) return;                      // caster out of this lamp's reach
+    var _g   = anim_shadow_ground(_rig, _dir, _is_player);
+    var _tt  = anim_shadow_lean(_s, _g, global.anim_shadow_min_fold);
+    var _div = anim_shadow_spread(_s, _g, _tt, ANIM_SHADOW_CARD_LY);
+
+    // The hoof columns as the rig drew them, put back on the floor through the projection,
+    // and then HELD APART across the ray exactly as anim_shadow_paint holds them -- so the
+    // dots mark the width the shadow is actually given, not the width the rig happened to
+    // measure. Drawn raw they sit almost on top of each other whenever the caster points at
+    // the lamp, which is the thing this overlay was added to show.
+    var _us = [_g.ub, _g.uf];
+    var _ex = [0, 0], _ey = [0, 0];
+    for (var i = 0; i < 2; i++) {
+        var _p = anim_shadow_station(_s, _g, _tt, _us[i], _div, ANIM_SHADOW_CARD_LY);
+        _ex[i] = _x + _p.rx;
+        _ey[i] = _y + _p.ry;
+    }
+    var _pnx = -_s.uy, _pny = _s.ux * 0.5;
+    var _pn  = max(0.0001, sqrt(_pnx * _pnx + _pny * _pny));
+    _pnx /= _pn;  _pny /= _pn;
+    var _sep = abs((_ex[1] - _ex[0]) * _pnx + (_ey[1] - _ey[0]) * _pny);
+    var _dd  = max(0, _g.d - _sep) * 0.5;
+    _ex[0] -= _dd * _pnx;  _ey[0] -= _dd * _pny;
+    _ex[1] += _dd * _pnx;  _ey[1] += _dd * _pny;
+
+    draw_set_colour(c_red);
+    draw_set_alpha(1);
+    for (var i = 0; i < 2; i++) {
+        // The ray from the lamp, through the edge, run well past the caster so the wedge it
+        // bounds is visible rather than implied.
+        var _dx = _ex[i] - _L.x, _dy = _ey[i] - _L.y;
+        var _l  = max(1, sqrt(_dx * _dx + _dy * _dy));
+        draw_line(_L.x, _L.y, _L.x + (_dx / _l) * 700, _L.y + (_dy / _l) * 700);
+    }
+    for (var i = 0; i < 2; i++) {
+        draw_circle(_ex[i], _ey[i], 3, false);        // filled, so they read over the grey
+    }
+    draw_set_colour(c_white);
+}
+
+/// The narrowest the strip gets anywhere across the card, as a multiple of the spacing it
+/// went in with. One is undistorted, below zero is a mirrored caster, and near zero is a
+/// caster squashed to a sliver -- which is what the frames either side of a mirror look
+/// like. Every sweep measures the mirror through here, walking EVERY station: the two ends
+/// alone cannot see a strip that folds in the middle and comes back, and with each column
+/// on its own ray it can do exactly that.
+/// Measured ALONG THE CARD'S OWN AXIS on the ground, not along screen x. Card-x is laid on
+/// the ground perpendicular to the ray (see anim_shadow_station), so with the lamp off to
+/// one side the strip advances in screen Y and an x-only test reads every station as
+/// standing still -- it would call a perfectly good shadow collapsed. Ground units, so the
+/// 2:1 metric does not weight the two axes differently.
+function anim_shadow_xscale(_s, _g, _tt, _div, _ly) {
+    var _st   = ANIM_SHADOW_STATIONS;
+    var _step = (ANIM_SHADOW_WIDE * 2) / _st;
+    // Measured in SCREEN X, which is the axis the card is actually laid on and the axis a
+    // reversed sprite reverses along. Measuring along the strip's own direction instead --
+    // whatever that direction happens to be -- makes this monotone by construction and
+    // therefore blind: it passed a build that drew a mirrored horse for every lamp on one
+    // side. A mirror test has to be anchored to something the mirror moves against.
+    var _pa = 0, _worst = 999999;
+    for (var _k = 0; _k <= _st; _k++) {
+        var _u = -ANIM_SHADOW_WIDE + _k * _step;
+        var _p = anim_shadow_station(_s, _g, _tt, _u, _div, _ly, ANIM_SHADOW_TALL);
+        if (_k > 0) _worst = min(_worst, (_p.tx - _pa) / _step);
+        _pa = _p.tx;
+    }
+    return _worst;
+}
+
+/// The horse rig's own tilt numbers, as the loader resolves them: ampDown/ampUp and the
+/// wide facing band come from horse.rig.json's isoTilt and facingRule, groundX from
+/// horse.demo.json. Written out rather than read from global.anim_rigs so the sweeps can
+/// run before the async load finishes -- but they are the REAL values, not stand-ins, and
+/// anim_shadow_rig_check fails the build if the JSON drifts away from them.
+function anim_shadow_test_rig() {
+    return { iso : { ampDown: 7, ampUp: 9, groundX: [-5, 26], flat: [] },
+             faceBand : [0, 180] };
+}
+
+/// Guards the constants above against the data. A sweep that turns a rig nobody ships is
+/// worth nothing, and nothing else would notice the day someone retunes the horse's tilt.
+function anim_shadow_rig_check() {
+    var _rigs = global[$ "anim_rigs"];
+    if (!is_struct(_rigs)) return "";                    // called before the load finished
+    var _h = _rigs[$ "horse"];
+    if (!is_struct(_h) || !is_struct(_h[$ "iso"])) return "";
+    var _t = anim_shadow_test_rig();
+    if (_h.iso.ampDown != _t.iso.ampDown || _h.iso.ampUp != _t.iso.ampUp) {
+        return "horse tilt is now " + string(_h.iso.ampDown) + "/" + string(_h.iso.ampUp)
+             + " but the shadow sweeps still turn " + string(_t.iso.ampDown) + "/"
+             + string(_t.iso.ampUp) + " -- update anim_shadow_test_rig";
+    }
+    if (_h.faceBand[0] != _t.faceBand[0] || _h.faceBand[1] != _t.faceBand[1]) {
+        return "horse faceBand changed -- update anim_shadow_test_rig";
+    }
+    var _gx = _h.iso[$ "groundX"];
+    if (is_array(_gx) && (_gx[0] != _t.iso.groundX[0] || _gx[1] != _t.iso.groundX[1])) {
+        return "horse groundX is now [" + string(_gx[0]) + "," + string(_gx[1])
+             + "] but the shadow sweeps still use [" + string(_t.iso.groundX[0]) + ","
+             + string(_t.iso.groundX[1]) + "] -- update anim_shadow_test_rig";
+    }
+    return "";
+}
+
+function anim_shadow_flicker_test() {
+    // The worst movement and the narrowest width seen anywhere, reported whether the sweep
+    // passes or fails. A pass with no numbers attached says only "under the bar", which is
+    // how a sweep sitting a hair under it goes unnoticed until it drifts over.
+    global.anim_shadow_worst = { jump: 0, where: "", xscale: 999999, xwhere: "",
+                                 narrow: 0, total: 0 };
+    var _L = { x: 0, y: 0, h: 60, r: 400 };
+    var _rig = anim_shadow_test_rig();
+    // Sweep the WHOLE range the HUD dial can reach, not just the shipped default, and
+    // several lamp distances -- the cast length factor scales with distance and it is what
+    // multiplies the lean, so a setting that is safe far away can invert up close. Testing
+    // one distance at one setting is how the mirror got through.
+    var _folds = [0.1, 0.33, 0.52, 0.8, 1.2];
+    // 35 is a lamp practically standing on the caster, which L in the demo drops wherever
+    // the cursor is. It is also the only distance here that reaches the divergence fold at
+    // all, now the guards judge the caster's own width instead of the whole card -- without
+    // it the liveness check below correctly reports this sweep as proving nothing.
+    var _dists = [35, 70, 140, 240, 330];
+    // The narrowest the shadow gets anywhere in the sweep. Checked at the end: see the note
+    // there on why a sweep that never comes near the failure is worthless.
+    var _tightest = 999999;
+
+    for (var _fi = 0; _fi < array_length(_folds); _fi++) {
+        var _minfold = _folds[_fi];
+        for (var _di = 0; _di < array_length(_dists); _di++) {
+            var _rad = _dists[_di];
+            for (var _la = 0; _la < 360; _la += 30) {
+                // Lamp on a 2:1 isometric orbit: ground y is the screen delta doubled.
+                var _gx = _rad * dcos(_la), _gy = -_rad * 0.5 * dsin(_la);
+                var _s = anim_light_shadow(_L, _gx, _gy);
+                if (_s == undefined) continue;
+
+                var _pax = 0, _pay = 0, _pbx = 0, _pby = 0, _have = false;
+                for (var _i = 0; _i <= 720; _i++) {
+                    var _dir = _i * 0.5;
+                    var _g = anim_shadow_ground(_rig, _dir, false);
+
+                    // Through the SAME calls the renderer makes, on the same card, rather
+                    // than a second copy of the arithmetic. The copy is what let the mirror
+                    // through: it modelled one cast direction for the whole card while the
+                    // renderer gave every column its own, so the term that actually turns
+                    // the strip over was absent from the thing under test.
+                    var _ly = ANIM_SHADOW_CARD_LY;
+                    var _tt  = anim_shadow_lean(_s, _g, _minfold);
+                    var _div = anim_shadow_spread(_s, _g, _tt, _ly);
+
+                    // WIDTH, which is the other half of the job and the half that has no
+                    // hard failure to trip over -- a shadow quietly narrowing is a
+                    // regression nobody's assertion catches. Counted as the share of
+                    // samples where the guarded fold ends up under four fifths of what the
+                    // dial asked for.
+                    var _foldg = _tt * _s.ux - _s.uy * 0.5;
+                    global.anim_shadow_worst.total++;
+                    if (abs(_foldg) < _minfold * 0.8) global.anim_shadow_worst.narrow++;
+
+                    var _worst = anim_shadow_xscale(_s, _g, _tt, _div, _ly);
+                    _tightest = min(_tightest, _worst);
+                    if (_worst < global.anim_shadow_worst.xscale) {
+                        global.anim_shadow_worst.xscale = _worst;
+                        global.anim_shadow_worst.xwhere = "fold " + string(_minfold);
+                    }
+                    if (_worst < ANIM_SHADOW_MIN_XSCALE - 0.02) {
+                        return "shadow mirrored/collapsed, x-scale "
+                             + string_format(_worst, 1, 2) + " at facing " + string(_dir)
+                             + ", lamp " + string(_la) + " dist " + string(_rad)
+                             + ", fold " + string(_minfold) + ", spread "
+                             + string_format(_div, 1, 2);
+                    }
+
+                    // FLICKER: no step between one facing and the next, measured at both
+                    // ends of the caster's own footprint.
+                    // Copied out, not held: anim_shadow_station hands back one shared
+                    // scratch, so `_a` would be `_b` by the time it is read.
+                    var _a = anim_shadow_station(_s, _g, _tt, -23, _div, _ly,
+                                                 ANIM_SHADOW_TALL);
+                    var _ax2 = _a.tx, _ay2 = _a.ty;
+                    var _b = anim_shadow_station(_s, _g, _tt,  23, _div, _ly,
+                                                 ANIM_SHADOW_TALL);
+                    var _bx2 = _b.tx, _by2 = _b.ty;
+                    if (_have) {
+                        var _jump = max(point_distance(_ax2, _ay2, _pax, _pay),
+                                        point_distance(_bx2, _by2, _pbx, _pby));
+                        if (_jump > global.anim_shadow_worst.jump) {
+                            global.anim_shadow_worst.jump  = _jump;
+                            global.anim_shadow_worst.where = "facing " + string(_dir)
+                                + ", lamp " + string(_la) + " dist " + string(_rad)
+                                + ", fold " + string(_minfold);
+                        }
+                        if (_jump > ANIM_SHADOW_MAX_JUMP) {
+                            return "shadow flickers " + string_format(_jump, 1, 1)
+                                 + "px at facing " + string(_dir) + ", lamp " + string(_la)
+                                 + " dist " + string(_rad) + ", fold " + string(_minfold);
+                        }
+                    }
+                    _pax = _ax2; _pay = _ay2; _pbx = _bx2; _pby = _by2; _have = true;
+                }
+            }
+        }
+    }
+
+    // CAN THIS SWEEP FAIL? Every artifact in this file's history was reported from the
+    // screen after a sweep had come back green, so a pass is only worth what the sweep is
+    // shown able to catch. If the narrowest shadow anywhere in the grid still sits a long
+    // way clear of the floor then the grid never approaches a mirror at all, and passing a
+    // mirror check says nothing. Measured on the shadow itself rather than on whether some
+    // guard engaged, so that tightening a guard cannot quietly make this vacuous -- which
+    // is exactly what happened when the guards moved to judging the caster's own width.
+    if (_tightest > ANIM_SHADOW_MIN_XSCALE + 0.5) {
+        return "grid never comes near the mirror boundary (narrowest "
+             + string_format(_tightest, 1, 2) + ") -- its mirror check proves nothing";
+    }
+    return anim_shadow_orbit_test();
+}
+
+/// A caster RUNNING A FULL CIRCLE AROUND THE LAMP, which is the thing actually reported
+/// from the screen and a genuinely different test from the grid above.
+///
+/// The grid turns a caster on the spot at a handful of fixed lamp placements, so facing and
+/// lamp direction are varied INDEPENDENTLY. On an orbit they move together: a running
+/// caster faces along its own travel, so its facing stays about ninety degrees off the lamp
+/// direction the whole way round, and the pair sweeps continuously through every angle in
+/// between. A coarse grid can step straight over what a correlated path lands on -- and
+/// which way the two are locked together is precisely what decides whether the lean and the
+/// divergence add or cancel, so it is the thing under test, not a detail of the setup.
+///
+/// The orbit is a circle in GROUND space, which the 2:1 metric makes an ellipse on screen.
+/// That is what the demo's horse actually runs, and it means the cast length varies all the
+/// way round even at a fixed radius.
+function anim_shadow_orbit_test() {
+    var _L   = { x: 0, y: 0, h: 60, r: 340 };
+    var _rig = anim_shadow_test_rig();
+    // The shipped ~24px setting first, then both ends of what the dial can reach.
+    var _folds = [0.52, 0.1, 1.2];
+    var _radii = [50, 90, 150, 230];
+    // A caster with no isoTilt at all -- the humanoid, whose baseline stays level through
+    // the origin. anim_shadow_ground returns t=0,c=0 there, a geometry the horse never
+    // produces and which nothing else in these sweeps covers.
+    var _flat = { t: 0, c: 0, w: 1 };
+    var _ly   = ANIM_SHADOW_CARD_LY;
+    var _tightest = 999999;
+
+    for (var _fi = 0; _fi < array_length(_folds); _fi++) {
+        var _minfold = _folds[_fi];
+        for (var _ri = 0; _ri < array_length(_radii); _ri++) {
+            var _rad = _radii[_ri];
+            // WHICH way facing is locked to the orbit. Modes 0 and 1 are the horse running
+            // the circle each way round; 2 keeps it pointed at the lamp the whole way,
+            // which is the collapse case, its baseline lying along its own cast; 3 never
+            // turns at all, so the lamp sweeps past a caster that stays put. 4 is the
+            // level-baseline caster, running.
+            for (var _mode = 0; _mode <= 4; _mode++) {
+                var _pax = 0, _pay = 0, _pbx = 0, _pby = 0, _have = false;
+                for (var _i = 0; _i <= 720; _i++) {
+                    var _oa = _i * 0.5;                  // where round the lamp it has got
+                    // Ground-space circle; screen y is half of ground y.
+                    var _cx = _L.x + _rad * dcos(_oa);
+                    var _cy = _L.y + _rad * dsin(_oa) * 0.5;
+                    // Screen-space tangent to that path, which is what the demo derives a
+                    // running character's facing from.
+                    var _tx2 = -_rad * dsin(_oa);
+                    var _ty2 =  _rad * dcos(_oa) * 0.5;
+
+                    var _dir;
+                    switch (_mode) {
+                        case 0:  _dir = point_direction(0, 0, _tx2, _ty2);            break;
+                        case 1:  _dir = point_direction(0, 0, -_tx2, -_ty2);          break;
+                        case 2:  _dir = point_direction(_cx, _cy, _L.x, _L.y);        break;
+                        case 3:  _dir = 90;                                           break;
+                        default: _dir = point_direction(0, 0, _tx2, _ty2);            break;
+                    }
+
+                    var _s = anim_light_shadow(_L, _cx, _cy);
+                    if (_s == undefined) continue;       // out of the lamp's reach
+                    var _g   = (_mode == 4) ? _flat : anim_shadow_ground(_rig, _dir, false);
+                    var _tt  = anim_shadow_lean(_s, _g, _minfold);
+                    var _div = anim_shadow_spread(_s, _g, _tt, _ly);
+
+                    // WIDTH, which is the other half of the job and the half that has no
+                    // hard failure to trip over -- a shadow quietly narrowing is a
+                    // regression nobody's assertion catches. Counted as the share of
+                    // samples where the guarded fold ends up under four fifths of what the
+                    // dial asked for.
+                    var _foldg = _tt * _s.ux - _s.uy * 0.5;
+                    global.anim_shadow_worst.total++;
+                    if (abs(_foldg) < _minfold * 0.8) global.anim_shadow_worst.narrow++;
+
+                    var _worst = anim_shadow_xscale(_s, _g, _tt, _div, _ly);
+                    _tightest = min(_tightest, _worst);
+                    if (_worst < global.anim_shadow_worst.xscale) {
+                        global.anim_shadow_worst.xscale = _worst;
+                        global.anim_shadow_worst.xwhere = "fold " + string(_minfold);
+                    }
+                    if (_worst < ANIM_SHADOW_MIN_XSCALE - 0.02) {
+                        return "orbit: shadow mirrored/collapsed, x-scale "
+                             + string_format(_worst, 1, 2) + " at orbit " + string(_oa)
+                             + " deg, radius " + string(_rad) + ", mode " + string(_mode)
+                             + ", facing " + string_format(_dir, 1, 1)
+                             + ", fold " + string(_minfold);
+                    }
+
+                    // FLICKER, measured from the caster's OWN anchor, so the shadow moving
+                    // with a running horse is not counted -- only the shape changing under
+                    // it. Copied out because the station struct is shared scratch.
+                    var _a = anim_shadow_station(_s, _g, _tt, -23, _div, _ly,
+                                                 ANIM_SHADOW_TALL);
+                    var _ax2 = _a.tx, _ay2 = _a.ty;
+                    var _b = anim_shadow_station(_s, _g, _tt,  23, _div, _ly,
+                                                 ANIM_SHADOW_TALL);
+                    var _bx2 = _b.tx, _by2 = _b.ty;
+                    if (_have) {
+                        var _jump = max(point_distance(_ax2, _ay2, _pax, _pay),
+                                        point_distance(_bx2, _by2, _pbx, _pby));
+                        if (_jump > global.anim_shadow_worst.jump) {
+                            global.anim_shadow_worst.jump  = _jump;
+                            global.anim_shadow_worst.where = "orbit " + string(_oa)
+                                + " r" + string(_rad) + " mode " + string(_mode)
+                                + ", fold " + string(_minfold);
+                        }
+                        if (_jump > ANIM_SHADOW_MAX_JUMP) {
+                            return "orbit: shadow flickers " + string_format(_jump, 1, 1)
+                                 + "px at orbit " + string(_oa) + " deg, radius "
+                                 + string(_rad) + ", mode " + string(_mode)
+                                 + ", facing " + string_format(_dir, 1, 1)
+                                 + ", fold " + string(_minfold);
+                        }
+                    }
+                    _pax = _ax2; _pay = _ay2; _pbx = _bx2; _pby = _by2; _have = true;
+                }
+            }
+        }
+    }
+
+    if (_tightest > ANIM_SHADOW_MIN_XSCALE + 0.5) {
+        return "orbit never comes near the mirror boundary (narrowest "
+             + string_format(_tightest, 1, 2) + ") -- its mirror check proves nothing";
+    }
+    return anim_shadow_rig_check();
+}
+
 /// Render the already assembled palette once, then cast that ONE texture into the wedge
 /// the light throws.
 ///
@@ -680,8 +1461,8 @@ function anim_shadow_regression_test() {
 function anim_shadow_paint(_parts, _s, _g, _ax, _ay, _dst, _main_cam, _cast_surf, _cast_cam) {
     if (!surface_exists(_dst) || !surface_exists(_cast_surf)) return;
     // A 256px card leaves 240px above the stable origin and 16px below it.
-    var _size = 256;
-    var _lx = 128, _ly = 240;
+    var _size = ANIM_SHADOW_CARD;
+    var _lx = ANIM_SHADOW_CARD_LX, _ly = ANIM_SHADOW_CARD_LY;
     camera_set_view_pos(_cast_cam, _ax - _lx, _ay - _ly);
     camera_set_view_size(_cast_cam, _size, _size);
     surface_reset_target();
@@ -716,32 +1497,113 @@ function anim_shadow_paint(_parts, _s, _g, _ax, _ay, _dst, _main_cam, _cast_surf
     // or one world matrix: it is a textured triangle strip, two vertices per station, with
     // adjacent quads SHARING them so the fan cannot open seams. Two rows is vertically
     // exact, the cast being linear in height.
+    // NEVER FOLD FLAT, AND NEVER FOLD OVER.
+    //
+    // The shadow's width comes from the angle between two directions: the baseline the
+    // card stands on, and the cast running out from the lamp. When those two line up the
+    // whole card folds onto a single line and the shadow all but disappears -- which is
+    // what happens when the caster points straight at the lamp, since then its baseline
+    // and its shadow run the same way. Separating the hoof rows cannot help there: that
+    // separation lies ALONG the shadow, not across it. anim_shadow_lean holds a floor
+    // under that angle; anim_shadow_spread stops the wedge folding the strip back through
+    // itself. The two failures are different and neither guard catches the other's.
+    // Read from the global, not the macro, so it can be dialled live from the HUD --
+    // O and P in the demo. The macro is only the starting value (see anim_boot).
+    var _tt = anim_shadow_lean(_s, _g, global.anim_shadow_min_fold);
+
+    // How much of the wedge this geometry can actually carry. Nearly always all of it; less
+    // only where the lamp is close enough that the ray swing across the card would fold the
+    // strip back through itself.
+    var _div = anim_shadow_spread(_s, _g, _tt, _ly);
+
     shader_set(sh_silhouette);
     draw_primitive_begin_texture(pr_trianglestrip, surface_get_texture(_cast_surf));
-    var _st = 16;
+    var _st = ANIM_SHADOW_STATIONS;
     for (var i = 0; i <= _st; i++) {
-        var _u  = -_lx + (i / _st) * _size;
-        // The card's own ground row under this column -- where the rig DREW this column's
-        // feet. It sets both the height a pixel is cast from and where the root lands, and
-        // those two must be the same row or the shadow sits off its own feet.
-        var _vg  = _g.c + _g.t * _u;
-        var _rgx = _s.dx + _u;
-        var _rgy = _s.dy2 + 2 * _vg;
-        var _rl  = max(1, sqrt(_rgx * _rgx + _rgy * _rgy));
-        var _dxs = (_rgx / _rl) * _s.s;
-        var _dys = (_rgy / _rl) * 0.5 * _s.s;
-        var _rx  = _ax + _u;
-        var _ry  = _ay + _vg;
-        var _hT  = _vg + _ly;                 // height of the card's top edge
-        var _uv  = (_u + _lx) / _size;
+        var _u = -_lx + (i / _st) * _size;
+        var _p = anim_shadow_station(_s, _g, _tt, _u, _div, _ly);
+        var _uv = (_u + _lx) / _size;
         // The strip STOPS at the ground row. Card rows below it are the few pixels of hoof
         // hanging under the joint, and they carry negative height -- cast as-is they throw
         // shadow BACKWARDS past the feet towards the lamp.
-        var _uvB = (_vg + _ly) / _size;
-        draw_vertex_texture_colour(_rx + _hT * _dxs, _ry + _hT * _dys, _uv, 0, _grey, 1);
-        draw_vertex_texture_colour(_rx, _ry, _uv, _uvB, _grey, 1);
+        var _uvB = _p.hT / _size;
+        draw_vertex_texture_colour(_ax + _p.tx, _ay + _p.ty, _uv, 0,    _grey, 1);
+        draw_vertex_texture_colour(_ax + _p.rx, _ay + _p.ry, _uv, _uvB, _grey, 1);
     }
     draw_primitive_end();
+
+    // THE BODY BAND: the depth the flat card has none of.
+    //
+    // A second strip along the same columns, but spread either side of the hoof line by
+    // half the body's depth, running perpendicular to the body ON THE GROUND. Both of its
+    // rows sample the card's own ground row, so this is the caster's footprint given
+    // thickness -- not a second copy of the caster offset sideways, which is what made the
+    // old smear dither the palette and pull its near edge off the feet.
+    //
+    // Symmetric about the hooves, so it welds where it always did. Its direction comes from
+    // the caster's facing alone, so no lamp position can reverse it, and it cannot collapse
+    // because its width is a constant rather than a determinant. That is the whole reason
+    // to do it here instead of in the guard: there is no side to choose.
+    // THE WHOLE PROJECTION SWEPT, not just a bar under the feet.
+    //
+    // A single band at the root gave the footprint depth and left the cast above it as thin
+    // as ever, so the shadow read as a slab with a streak coming off it. What is missing is
+    // the caster's thickness everywhere along its shadow, not only where it touches down,
+    // so the whole strip is laid down again at a spread of offsets and the union of them is
+    // the shadow. That is the caster swept through the depth the card does not have.
+    //
+    // This is NOT the old smear, and the difference is the shader. That one stamped the
+    // full palette sideways, so the copies disagreed pixel by pixel and dithered into a
+    // slab, and each rooted on its own line so the near edge came off the hooves. Under
+    // sh_silhouette every copy is the same flat grey and they differ only in shape, so the
+    // union is one clean silhouette; the offset is vertical and equal both ways, so the
+    // near edge cannot pull off the feet.
+    //
+    // No sign anywhere: the offsets are symmetric about zero and fixed in screen space, so
+    // nothing here can reverse with the lamp, the facing, or anything else.
+    // THE TWO EDGES HELD APART, ACROSS THE RAY.
+    //
+    // The rig measures the shadow's edges at its hoof columns, which run along the BODY --
+    // so as soon as the caster points anywhere near the lamp those two points fall one
+    // behind the other along the ray and the width between them goes to nothing. The F3
+    // overlay draws it: two rays out of the lamp that are all but the same line. That is
+    // the thin shadow, and it is not a projection error, it is the wrong two points.
+    //
+    // What decides the width is their separation ACROSS the ray, and that is what gets a
+    // floor here. Measured through the same stations the strip is drawn from, and made up
+    // by laying the silhouette down again either side of the line, along the ray's own
+    // perpendicular -- symmetric, so there is no side to choose and nothing to flip, and
+    // bounded below by the dial, so no facing can be thinner than it is set to.
+    var _pnx = -_s.uy, _pny = _s.ux * 0.5;
+    var _pn  = max(0.0001, sqrt(_pnx * _pnx + _pny * _pny));
+    _pnx /= _pn;  _pny /= _pn;
+
+    var _q0  = anim_shadow_station(_s, _g, _tt, _g.ub, _div, _ly);
+    var _e0x = _q0.rx, _e0y = _q0.ry;
+    var _q1  = anim_shadow_station(_s, _g, _tt, _g.uf, _div, _ly);
+    var _sep = abs((_q1.rx - _e0x) * _pnx + (_q1.ry - _e0y) * _pny);
+
+    // Only the shortfall is made up, so a caster already broadside is left alone.
+    var _dd = max(0, _g.d - _sep) * 0.5;
+    var _cp = 6;
+    if (_dd > 0.5) {
+        for (var k = -_cp; k <= _cp; k++) {
+            if (k == 0) continue;                     // k = 0 is the strip drawn above
+            var _ok = (k / _cp) * _dd;
+            draw_primitive_begin_texture(pr_trianglestrip, surface_get_texture(_cast_surf));
+            for (var j = 0; j <= _st; j++) {
+                var _u2 = -_lx + (j / _st) * _size;
+                var _q  = anim_shadow_station(_s, _g, _tt, _u2, _div, _ly);
+                var _v2 = (_u2 + _lx) / _size;
+                var _b2 = _q.hT / _size;
+                draw_vertex_texture_colour(_ax + _q.tx + _ok * _pnx,
+                                           _ay + _q.ty + _ok * _pny, _v2, 0,   _grey, 1);
+                draw_vertex_texture_colour(_ax + _q.rx + _ok * _pnx,
+                                           _ay + _q.ry + _ok * _pny, _v2, _b2, _grey, 1);
+            }
+            draw_primitive_end();
+        }
+    }
     shader_reset();
 }
 
@@ -857,6 +1719,16 @@ function anim_draw(_rig, _clip, _play, _x, _y, _dir, _look, _is_player) {
     anim_paint(_p);
     anim_light_sheen(_p, _x, _y);
 }
+
+
+
+
+
+
+
+
+
+
 
 
 
