@@ -86,19 +86,36 @@ if (global.anim_ready) {
         with (obj_demo_skeleton) anim_shadow_char(_L, rig, clip, play, x, y, direction,
                                                    look, false, _dst, _cam, _cs, _cc);
         with (obj_demo_horse)    anim_shadow_pair(_L, self, _dst, _cam, _cs, _cc);
-        // Fade by every OTHER pool's bright core, never this light's own. Sized to what
-        // the eye reads as brightly lit (a quarter of the reach), NOT the attenuation
-        // radius: an oversized fade carved invisible holes into shadows a hundred pixels
-        // from any visible glow -- a missing horse head and a gap mid-body, with the
-        // culprit light off-screen.
+        // LIGHT WASHES SHADOW: every OTHER lamp's illumination is subtracted from this
+        // lamp's shadows, per pixel, using the SAME falloff the stamps themselves carry --
+        // a shadow is only dark where no other light reaches, so where pools overlap it
+        // fades, and one long cast brightens and darkens along its length as it crosses
+        // them. Never this light's own pool: the caster is blocking that light, which is
+        // the whole reason its shadow exists.
+        //
+        // The wash is the lamp's TRUE profile, not a flat core. An earlier flat oversized
+        // fade carved invisible holes into shadows far from any visible glow (a missing
+        // horse head, with the culprit light off-screen); a wash that follows the real
+        // attenuation is by construction strong only where the glow is visibly strong, so
+        // it cannot punch holes where the ground reads dark. Centre strength matches the
+        // stamp formula -- 255*(1 - h/r), a raised lamp washes less -- and the ellipse
+        // ends where its light does, at the ground reach sqrt(r*r - h*h). The gradient is
+        // linear in ground distance where the stamps fade by through-the-air distance; the
+        // difference is a few percent, flattest near the centre, and not worth a shader.
+        //
+        // ANIM_SHADOW_WASH scales the whole wash. At 1, two equally-lit overlapping pools
+        // erase each other's shadows completely at the midpoint; physically about half the
+        // darkness should survive there, so the wash runs below full strength.
         gpu_set_blendmode(bm_subtract);
         for (var j = 0; j < _nl; j++) {
             if (j == l) continue;
             var _L2 = global.demo_lights[j];
-            var _fw = _L2.r * 0.25;
+            var _c0 = 255 * (1 - _L2.h / _L2.r) * ANIM_SHADOW_WASH;
+            if (_c0 <= 0) continue;
+            var _fw = sqrt(max(0, _L2.r * _L2.r - _L2.h * _L2.h));
             draw_ellipse_colour(_L2.x - _fw, _L2.y - _fw * 0.5,
                                 _L2.x + _fw, _L2.y + _fw * 0.5,
-                                make_colour_rgb(70, 70, 70), c_black, false);
+                                make_colour_rgb(_c0, _c0, _c0), c_black, false);
         }
         gpu_set_blendmode(bm_normal);
         surface_reset_target();

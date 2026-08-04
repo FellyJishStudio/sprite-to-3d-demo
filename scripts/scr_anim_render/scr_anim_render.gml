@@ -549,6 +549,13 @@ function anim_light_shadow(_L, _gx, _gy) {
 /// gap between the red dots. K and L move it live.
 #macro ANIM_SHADOW_EDGE 8
 
+/// How strongly other lamps' illumination washes a shadow out, per pixel (see the wash pass
+/// in obj_demo_controller/Draw_0). Zero is the old behaviour -- every shadow at full local
+/// strength regardless of other light. One erases a shadow completely wherever another lamp
+/// shines as brightly as its own; physically about half the darkness should survive where
+/// two equal pools overlap, so it sits below that.
+#macro ANIM_SHADOW_WASH 0.7
+
 /// The minimum width, in pixels, that any shadow may come out at -- what the ring in
 /// anim_shadow_paint holds a collapsing cast to. The ring only ever makes up the SHORTFALL
 /// below this, so a cast already at least this wide is drawn to the pixel as it always was:
