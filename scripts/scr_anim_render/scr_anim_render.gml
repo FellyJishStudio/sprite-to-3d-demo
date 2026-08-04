@@ -1646,8 +1646,15 @@ function anim_shadow_paint(_parts, _s, _g, _ax, _ay, _dst, _main_cam, _cast_surf
     // Only the shortfall, halved into a radius: a 3px envelope gets a 1px ring and comes
     // out at the minimum; a 5px one gets radius zero and is untouched to the pixel. The
     // radius is continuous in the width, so nothing pops as a caster turns through the
-    // boundary. M and N move the minimum live; the macro starts it.
-    var _minw = global[$ "anim_shadow_thin"] ?? ANIM_SHADOW_THIN;
+    // boundary.
+    //
+    // PER CASTER, not global. The minimum belongs to the thing casting: a horse (with or
+    // without its rider) carries `shadow_minw` on the instance and anim_shadow_pair passes
+    // it through here; a caster without one -- the dismounted player, the skeletons --
+    // gets zero and is never widened at all. The width floor exists because the horse's
+    // long body collapses to a streak at some headings; a humanoid's shadow was never the
+    // complaint, and widening it too was part of what kept reading as wrong.
+    var _minw = global[$ "anim_shadow_cast_minw"] ?? 0;
     var _rr = clamp((_minw - _qw) * 0.5, 0, _minw * 0.5);
     if (_rr > 0.15) {
         for (var k = 0; k < 8; k++) {
@@ -1757,6 +1764,9 @@ function anim_shadow_char(_L, _rig, _clip, _play, _x, _y, _dir, _look, _is_playe
     // The DRAWN facing: the shadow is the character you are looking at, laid down.
     var _g = anim_shadow_ground(_rig, _dir, _is_player);
     var _p = anim_build(anim_scratch(), _rig, _clip, _play, _x, _y, _dir, _look, _is_player);
+    // Humanoids and skeletons carry no width floor: the minimum is the horse's property
+    // (see anim_shadow_paint), and a dismounted player's shadow is left exactly as drawn.
+    global.anim_shadow_cast_minw = 0;
     anim_shadow_paint(_p, _s, _g, _x, _y, _dst, _main_cam, _cast_surf, _cast_cam);
 }
 
@@ -1775,6 +1785,10 @@ function anim_shadow_pair(_L, _h, _dst, _main_cam, _cast_surf, _cast_cam) {
                    anim_mount_state(_h.rig, _h.direction));
     }
     anim_build(_p, _h.rig, _h.clip, _h.play, _h.x, _h.y, _h.direction, _h.look, false);
+    // The width floor rides on the HORSE INSTANCE -- `shadow_minw`, set in its Create --
+    // so it applies to the horse and to horse-plus-rider, is absent for everyone else,
+    // and can differ per horse if one ever needs it to.
+    global.anim_shadow_cast_minw = _h[$ "shadow_minw"] ?? 0;
     anim_shadow_paint(_p, _s, _g, _h.x, _h.y, _dst, _main_cam, _cast_surf, _cast_cam);
 }
 

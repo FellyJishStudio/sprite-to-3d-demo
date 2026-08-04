@@ -58,35 +58,29 @@ for (var i = 0; i < array_length(global.demo_lights); i++) {
 // and moved a shadow setting made every experiment with one contaminate the other.
 if (keyboard_check_pressed(ord("B"))) demo_add_light(mouse_x, mouse_y);
 
-// O and P dial the cast-shadow width floor live, so values can be compared on screen
-// instead of by rebuilding for each one. Held down they repeat, since finding the right
-// number means sweeping it and watching; shift makes the step coarse. Zero turns the floor
-// off, which is worth a look -- that is the shadow collapsing to a hairline as a caster
-// comes round to face its lamp.
+// The shadow tuning keys are RETIRED. The width minimum stopped being a global dial and
+// became a property of the horse instance (`shadow_minw`, obj_demo_horse/Create_0), the
+// fold rests at zero and the edge gap at its macro -- and live keys on those values meant
+// every screenshot came from unknown settings, which repeatedly turned tuning sessions
+// into ghost hunts. The blocks are kept, disabled, so re-enabling one for an experiment
+// is uncommenting it rather than re-deriving it.
 //
-// LETTER keys on purpose. ord() returns an ASCII code and keyboard_check wants a virtual
-// key code; those agree for letters and digits but not for punctuation, so ord("[") would
-// silently check something else entirely.
-// M and N set the MINIMUM WIDTH any shadow may come out at, in pixels. The ring in
-// anim_shadow_paint makes up only the SHORTFALL below this, so every cast already at least
-// this wide is untouched to the pixel and only a collapsing one is held at the floor. Zero
-// switches the floor off entirely, which is a legitimate setting rather than a trap, since
-// nothing else depends on it. Held to repeat; shift for a coarse step.
-var _thin_step = keyboard_check(vk_shift) ? 2 : 0.5;
-if (keyboard_check(ord("M"))) {
-    global.anim_shadow_thin = max(0, global.anim_shadow_thin - _thin_step);
-}
-if (keyboard_check(ord("N"))) {
-    global.anim_shadow_thin = min(31, global.anim_shadow_thin + _thin_step);
-}
-
-var _fold_step = keyboard_check(vk_shift) ? 0.02 : 0.005;
-if (keyboard_check(ord("O"))) {
-    global.anim_shadow_min_fold = max(0, global.anim_shadow_min_fold - _fold_step);
-}
-if (keyboard_check(ord("P"))) {
-    global.anim_shadow_min_fold = min(1.2, global.anim_shadow_min_fold + _fold_step);
-}
+// M/N minimum width -- superseded by per-instance shadow_minw:
+//     var _thin_step = keyboard_check(vk_shift) ? 2 : 0.5;
+//     if (keyboard_check(ord("M"))) {
+//         global.anim_shadow_thin = max(0, global.anim_shadow_thin - _thin_step);
+//     }
+//     if (keyboard_check(ord("N"))) {
+//         global.anim_shadow_thin = min(31, global.anim_shadow_thin + _thin_step);
+//     }
+// O/P blanket fold -- stays at zero, the lean it dialled is what caused the mirrors:
+//     var _fold_step = keyboard_check(vk_shift) ? 0.02 : 0.005;
+//     if (keyboard_check(ord("O"))) {
+//         global.anim_shadow_min_fold = max(0, global.anim_shadow_min_fold - _fold_step);
+//     }
+//     if (keyboard_check(ord("P"))) {
+//         global.anim_shadow_min_fold = min(1.2, global.anim_shadow_min_fold + _fold_step);
+//     }
 
 // THRONE_SHOTS=<n>: contact-sheet mode. Clears the room to one horse under one lamp, steps
 // it through n evenly spaced facings, saves a screenshot of each and quits. Shadow bugs are
@@ -152,17 +146,15 @@ if (_shots > 0) {
     }
 }
 
-// K and L drag the two measured shadow edges apart, in pixels, on top of whatever O/P asks
-// for. This is the number the F3 overlay draws -- the gap between the red dots across the
-// ray -- so it can be pushed while watching the thing it controls, which is the only way
-// any of these values have actually been settled. Held to repeat; shift makes it coarse.
-var _edge_step = keyboard_check(vk_shift) ? 4 : 1;
-if (keyboard_check(ord("K"))) {
-    global.anim_shadow_edge = max(0, global.anim_shadow_edge - _edge_step);
-}
-if (keyboard_check(ord("L"))) {
-    global.anim_shadow_edge = min(240, global.anim_shadow_edge + _edge_step);
-}
+// K/L edge gap -- RETIRED with the other shadow dials (see the note above the M/N block);
+// the gap holds at ANIM_SHADOW_EDGE. Kept for uncommenting into an experiment:
+//     var _edge_step = keyboard_check(vk_shift) ? 4 : 1;
+//     if (keyboard_check(ord("K"))) {
+//         global.anim_shadow_edge = max(0, global.anim_shadow_edge - _edge_step);
+//     }
+//     if (keyboard_check(ord("L"))) {
+//         global.anim_shadow_edge = min(240, global.anim_shadow_edge + _edge_step);
+//     }
 
 var _gx = device_mouse_x_to_gui(0), _gy = device_mouse_y_to_gui(0);
 
