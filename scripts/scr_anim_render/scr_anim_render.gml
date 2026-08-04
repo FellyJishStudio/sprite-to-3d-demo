@@ -1709,6 +1709,22 @@ function anim_light_sheen(_parts, _gx, _gy) {
         if (_a < 0.02) continue;
         var _ox = -_dgx / _gd * 1.5;
         var _oy = -_dgy * 0.5 / _gd * 1.5;
+        // What the lamp actually throws. Ordinary lamps keep the fixed warm they have always
+        // used; an EFFECT lamp puts its own colour on whoever is standing in it, which is the
+        // difference between a disco ball and a violet circle on the floor. Its pool tint is
+        // dim by design (it is added to the floor), so it is taken up to full brightness here
+        // -- `_a` above is what keeps this a kiss of light rather than a paint job.
+        //
+        // Read through the accessor: the projection tests build bare light structs with no
+        // tint at all, and this runs for every character in range of every light.
+        var _tint = make_colour_rgb(226, 208, 168);
+        if ((_L[$ "fx"] ?? "") != "") {
+            var _tc = _L.col;
+            var _m  = max(colour_get_red(_tc), colour_get_green(_tc), colour_get_blue(_tc));
+            if (_m > 1) _tint = make_colour_rgb(colour_get_red(_tc)   * 255 / _m,
+                                                colour_get_green(_tc) * 255 / _m,
+                                                colour_get_blue(_tc)  * 255 / _m);
+        }
         gpu_set_blendmode(bm_add);
         var _count = array_length(_parts);
         for (var i = 0; i < _count; i += PART.SIZE) {
@@ -1718,7 +1734,7 @@ function anim_light_sheen(_parts, _gx, _gy) {
             draw_sprite_ext(_spr, _parts[i + PART.SUB],
                 _parts[i + PART.X] + _ox, _parts[i + PART.Y] + _oy,
                 _parts[i + PART.XS], _parts[i + PART.YS], _parts[i + PART.ANG],
-                make_colour_rgb(226, 208, 168), _a * _parts[i + PART.ALPHA]);
+                _tint, _a * _parts[i + PART.ALPHA]);
         }
         gpu_set_blendmode(bm_normal);
     }

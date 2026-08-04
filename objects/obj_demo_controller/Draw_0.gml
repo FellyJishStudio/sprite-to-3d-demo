@@ -37,7 +37,10 @@ for (var i = 0; i < array_length(global.demo_lights); i++) {
     var _w  = _L.r * 0.5 * (0.55 + 0.45 * _hf);
     var _k  = clamp(1 / (_hf * _hf), 0.18, 1.6);
     draw_ellipse_colour(_L.x - _w, _L.y - _w * 0.5, _L.x + _w, _L.y + _w * 0.5,
-                        make_colour_rgb(84 * _k, 66 * _k, 28 * _k), c_black, false);
+                        demo_col_scale(_L.col, _k), c_black, false);
+    // An effect lamp's pattern goes on the floor, in this same additive pass, before the
+    // fixture -- so the stem and bulb sit on top of what they are throwing.
+    if (_L.fx != "") demo_fx_paint(_L);
     // The lamp itself is drawn UP at its height -- height is straight screen-y, the one
     // axis the isometric projection does not halve -- with a stem down to the ground point
     // its pool and its shadows are actually measured from.
@@ -45,7 +48,8 @@ for (var i = 0; i < array_length(global.demo_lights); i++) {
     draw_line_colour(_L.x, _L.y, _L.x, _ly, make_colour_rgb(30, 26, 12),
                                             make_colour_rgb(90, 80, 40));
     draw_circle_colour(_L.x, _L.y - 2, 3, make_colour_rgb(40, 36, 18), c_black, false);
-    draw_circle_colour(_L.x, _ly, 4, make_colour_rgb(255, 236, 170), c_black, false);
+    draw_circle_colour(_L.x, _ly, 4, (_L.fx == "") ? make_colour_rgb(255, 236, 170)
+                                                   : demo_col_boost(_L.col), c_black, false);
 }
 gpu_set_blendmode(bm_normal);
 

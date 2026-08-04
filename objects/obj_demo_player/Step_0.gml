@@ -9,14 +9,15 @@
 /// Direction is the actual movement vector, which is what drives the 360-degree rendering.
 
 if (keyboard_check_pressed(vk_space))  sword_on = !sword_on;
-if (keyboard_check_pressed(ord("R")))  look = look_random();
+if (keyboard_check_pressed(ord("T")))  look = look_random();      // was R; see below
 
-// WASD is the same mechanic, not a second one: it pushes the destination ahead of you, and
+// The ARROWS, not WASD: W, E and R now drop the effect lamps at the cursor (controller
+// Step), and a key that both walked and spawned a disco ball dropped one every time you
+// stepped north. R moved off the look shuffle for the same reason. This is the same
+// mechanic as clicking, not a second one -- it pushes the destination ahead of you, and
 // Shift pushes it past the run threshold below.
-var _h = (keyboard_check(vk_right) || keyboard_check(ord("D")))
-       - (keyboard_check(vk_left)  || keyboard_check(ord("A")));
-var _v = (keyboard_check(vk_down)  || keyboard_check(ord("S")))
-       - (keyboard_check(vk_up)    || keyboard_check(ord("W")));
+var _h = keyboard_check(vk_right) - keyboard_check(vk_left);
+var _v = keyboard_check(vk_down)  - keyboard_check(vk_up);
 if (_h != 0 || _v != 0) {
     var _lead = keyboard_check(vk_shift) ? 120 : 40;
     var _push = point_direction(0, 0, _h, -_v);

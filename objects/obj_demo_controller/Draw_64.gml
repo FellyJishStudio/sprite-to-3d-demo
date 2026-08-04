@@ -47,9 +47,9 @@ for (var i = 0; i < array_length(buttons); i++) {
 }
 
 draw_text(16 + array_length(buttons) * 92, 46,
-          "click to move   WASD/Shift also move   wheel zooms   Space sword   R shuffle look   B light   F3 cast overlay");
+          "click to move   arrows/Shift also move   wheel zooms   Space sword   T shuffle look   F3 cast overlay");
 draw_text(16 + array_length(buttons) * 92, 62,
-          "right-click or hold left on a horse to ride");
+          "right-click or hold left on a horse to ride      at the cursor:  B lamp   W disco   E water   R galaxy   Q explosion");
 
 if (menu_open) {
     var _label = (obj_demo_player.mount == noone) ? "Ride" : "Dismount";

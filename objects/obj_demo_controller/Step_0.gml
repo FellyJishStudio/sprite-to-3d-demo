@@ -44,19 +44,59 @@ if (!spawned) {
     demo_add_light(room_width / 2 + 250, room_height / 2 + 10, true);
 }
 
+var _dt = delta_time / 1000000;               // seconds since the last step
+
+// Q: set off a blast under the cursor.
+if (keyboard_check_pressed(ord("Q"))) demo_boom(mouse_x, mouse_y);
+
 // Height is what sets shadow length, so the rising lamp is the whole demonstration: its
 // shadows stretch as it sinks and pull in as it climbs. Eased with a sine so it lingers at
 // both ends rather than sweeping through them.
-for (var i = 0; i < array_length(global.demo_lights); i++) {
+//
+// Backwards, because temporary lamps are DELETED from this array as they burn out and
+// deleting during a forward walk skips the next entry. The shadow surfaces are indexed by
+// position and are scratch -- cleared and restamped every frame -- so the indices shifting
+// underneath them costs nothing.
+for (var i = array_length(global.demo_lights) - 1; i >= 0; i--) {
     var _L = global.demo_lights[i];
-    if (!_L.rise) continue;
-    _L.t += LIGHT_RISE_SPEED * (delta_time / 1000000);
-    _L.h = LIGHT_H_MIN + (LIGHT_H_MAX - LIGHT_H_MIN) * (0.5 - 0.5 * cos(_L.t));
+    _L.ft += _dt;                             // every lamp's own effect clock
+    if (_L.fx == "disco") {
+        // The pool cycles with the ball. Left fixed, the floor stays one violet wash while
+        // the spots on it run through the spectrum, and the two read as unrelated. This is
+        // also what the sheen samples, so a character under it changes colour as it turns.
+        _L.col = make_colour_hsv((_L.ft * 30) mod 256, 205, 104);
+    }
+    if (_L.rise) {
+        _L.t += LIGHT_RISE_SPEED * _dt;
+        _L.h = LIGHT_H_MIN + (LIGHT_H_MAX - LIGHT_H_MIN) * (0.5 - 0.5 * cos(_L.t));
+    }
+    if (_L.life < 0) continue;                // a permanent lamp
+    _L.life -= _dt;
+    if (_L.life <= 0) { array_delete(global.demo_lights, i, 1); continue; }
+    // Full glare on the first frame, then decay. Reach is what fades: attenuation runs on
+    // distance over radius, so shrinking the radius pulls the light in and dims everything
+    // it touches -- pool, sheen and cast shadows together, with no separate fade to keep
+    // in step.
+    _L.r = _L.r0 * power(_L.life / _L.life0, 0.55);
+}
+
+// Explosions age out on the same clock. Drawn in Draw End, not here.
+for (var b = array_length(global.demo_booms) - 1; b >= 0; b--) {
+    var _B = global.demo_booms[b];
+    _B.t += _dt;
+    if (_B.t >= _B.dur) array_delete(global.demo_booms, b, 1);
 }
 
 // B, not N or L: those keys move shadow settings below, and a key that both spawned a lamp
 // and moved a shadow setting made every experiment with one contaminate the other.
 if (keyboard_check_pressed(ord("B"))) demo_add_light(mouse_x, mouse_y);
+
+// The three effect lamps, at the cursor. W and R used to be player keys (walk up, shuffle
+// look) -- movement is on the arrows now and the shuffle moved to T, because a key that
+// both walked and dropped a disco ball spawned one every time you stepped north.
+if (keyboard_check_pressed(ord("W"))) demo_fx_light(mouse_x, mouse_y, "disco");
+if (keyboard_check_pressed(ord("E"))) demo_fx_light(mouse_x, mouse_y, "water");
+if (keyboard_check_pressed(ord("R"))) demo_fx_light(mouse_x, mouse_y, "galaxy");
 
 // The shadow tuning keys are RETIRED. The width minimum stopped being a global dial and
 // became a property of the horse instance (`shadow_minw`, obj_demo_horse/Create_0), the
