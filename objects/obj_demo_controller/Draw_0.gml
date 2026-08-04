@@ -143,6 +143,37 @@ if (global.anim_ready && variable_global_exists("anim_debug_cast") && global.ani
         if (_best >= 0) {
             anim_shadow_debug(global.demo_lights[_best], rig, direction, false, x, y);
         }
+
+        // The two numbers the width rule is decided from, put where they are decided.
+        //
+        // On the CASTER, its own facing. Over each LAMP, this caster's facing RELATIVE to
+        // that lamp -- zero meaning pointed straight at it, which is the alignment that
+        // collapses the shadow. Relative rather than absolute because that is the quantity
+        // that matters and working it out by eye from two absolute bearings is exactly the
+        // sort of arithmetic that has gone wrong repeatedly here.
+        //
+        // Per lamp, because it is per lamp: the same caster is lined up with one and
+        // broadside to another in the same frame, and only the aligned one widens.
+        draw_set_halign(fa_center);
+        draw_set_colour(c_white);
+        draw_text(x, y - 78, string_format(direction, 3, 0));
+
+        for (var i = 0; i < _nl2; i++) {
+            var _Ld  = global.demo_lights[i];
+            // Bearing from the lamp out to the caster, then how far the caster's own facing
+            // sits off it. angle_difference gives the signed -180..180, so +/-180 is
+            // pointed dead away and 0 is pointed dead at it.
+            var _bear = point_direction(_Ld.x, _Ld.y, x, y);
+            var _rel  = angle_difference(direction, _bear);
+            // Grey for a lamp too far off to cast at all, so a reading that means nothing
+            // is not mistaken for one that does. Nothing else is inferred here: this
+            // reports the geometry and makes no claim about what the shadow will do with it.
+            var _sd = anim_light_shadow(_Ld, x, y);
+            draw_set_colour((_sd == undefined) ? c_gray : c_aqua);
+            draw_text(_Ld.x, _Ld.y - _Ld.h - 20, string_format(_rel, 4, 0));
+        }
+        draw_set_colour(c_white);
+        draw_set_halign(fa_left);
     }
 }
 

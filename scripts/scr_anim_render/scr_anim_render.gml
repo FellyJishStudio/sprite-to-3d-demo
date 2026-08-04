@@ -548,6 +548,13 @@ function anim_light_shadow(_L, _gx, _gy) {
 /// the number that actually sets the shadow's width, and the one the F3 overlay draws as the
 /// gap between the red dots. K and L move it live.
 #macro ANIM_SHADOW_EDGE 8
+
+/// The minimum width, in pixels, that any shadow may come out at -- what the ring in
+/// anim_shadow_paint holds a collapsing cast to. The ring only ever makes up the SHORTFALL
+/// below this, so a cast already at least this wide is drawn to the pixel as it always was:
+/// the floor exists only where the collapse does. Five is "a hairline becomes a slim
+/// readable band". M and N move it live; zero switches the floor off.
+#macro ANIM_SHADOW_THIN 5
 /// Floor under the shadow's horizontal scale. At zero the sprite squashes to a line and
 /// then comes out MIRRORED, columns in reverse order; this keeps a quarter of the width
 /// no matter how far the lean is pushed. It bounds the O/P dial rather than the dial
@@ -631,7 +638,7 @@ function anim_shadow_ground(_rig, _dir, _is_player) {
     // ub/uf are the back and front hoof columns -- the two card-x the shadow's width is
     // actually measured between. Carried out so the debug overlay marks the SAME points the
     // projection uses rather than a second guess at them.
-    static _g = { t: 0, c: 0, w: 1, d: 0, px: 0, py: 0, ub: 0, uf: 0 };
+    static _g = { t: 0, c: 0, w: 1, d: 0, px: 0, py: 0, ub: 0, uf: 0, dir: 0 };
     _g.t = 0;
     _g.c = 0;
     var _iso = _rig.iso;
@@ -710,6 +717,7 @@ function anim_shadow_ground(_rig, _dir, _is_player) {
     // reach zero -- so the minimum holds in every direction without anything to flip.
     var _len = abs(_uf - _ub) + ANIM_SHADOW_BODY;
     _g.w = max(1, (global.anim_shadow_min_fold * 46) / max(1, _len));
+    _g.dir = _dir;
     _g.ub = _ub;
     _g.uf = _uf;
 
@@ -1533,93 +1541,141 @@ function anim_shadow_paint(_parts, _s, _g, _ax, _ay, _dst, _main_cam, _cast_surf
     var _div = anim_shadow_spread(_s, _g, _tt, _ly);
 
     shader_set(sh_silhouette);
-    draw_primitive_begin_texture(pr_trianglestrip, surface_get_texture(_cast_surf));
+
+    // The stations are solved ONCE into a table and every copy below reads it back. The
+    // band and the ring lay this same strip down up to twenty more times, and re-solving
+    // seventeen stations for every copy of every caster against every light is what halved
+    // the frame rate the last time this loop grew. anim_shadow_station hands back one
+    // shared scratch struct, so the fields are copied out rather than the struct kept.
     var _st = ANIM_SHADOW_STATIONS;
+    static _kx = array_create(ANIM_SHADOW_STATIONS + 1);   // root
+    static _ky = array_create(ANIM_SHADOW_STATIONS + 1);
+    static _kX = array_create(ANIM_SHADOW_STATIONS + 1);   // tip
+    static _kY = array_create(ANIM_SHADOW_STATIONS + 1);
+    static _kU = array_create(ANIM_SHADOW_STATIONS + 1);   // u across the card
+    static _kB = array_create(ANIM_SHADOW_STATIONS + 1);   // v of the ground row
     for (var i = 0; i <= _st; i++) {
         var _u = -_lx + (i / _st) * _size;
         var _p = anim_shadow_station(_s, _g, _tt, _u, _div, _ly);
-        var _uv = (_u + _lx) / _size;
+        _kx[i] = _ax + _p.rx;  _ky[i] = _ay + _p.ry;
+        _kX[i] = _ax + _p.tx;  _kY[i] = _ay + _p.ty;
+        _kU[i] = (_u + _lx) / _size;
         // The strip STOPS at the ground row. Card rows below it are the few pixels of hoof
         // hanging under the joint, and they carry negative height -- cast as-is they throw
         // shadow BACKWARDS past the feet towards the lamp.
-        var _uvB = _p.hT / _size;
-        draw_vertex_texture_colour(_ax + _p.tx, _ay + _p.ty, _uv, 0,    _grey, 1);
-        draw_vertex_texture_colour(_ax + _p.rx, _ay + _p.ry, _uv, _uvB, _grey, 1);
+        _kB[i] = _p.hT / _size;
     }
-    draw_primitive_end();
 
-    // THE BODY BAND: the depth the flat card has none of.
-    //
-    // A second strip along the same columns, but spread either side of the hoof line by
-    // half the body's depth, running perpendicular to the body ON THE GROUND. Both of its
-    // rows sample the card's own ground row, so this is the caster's footprint given
-    // thickness -- not a second copy of the caster offset sideways, which is what made the
-    // old smear dither the palette and pull its near edge off the feet.
-    //
-    // Symmetric about the hooves, so it welds where it always did. Its direction comes from
-    // the caster's facing alone, so no lamp position can reverse it, and it cannot collapse
-    // because its width is a constant rather than a determinant. That is the whole reason
-    // to do it here instead of in the guard: there is no side to choose.
-    // THE WHOLE PROJECTION SWEPT, not just a bar under the feet.
-    //
-    // A single band at the root gave the footprint depth and left the cast above it as thin
-    // as ever, so the shadow read as a slab with a streak coming off it. What is missing is
-    // the caster's thickness everywhere along its shadow, not only where it touches down,
-    // so the whole strip is laid down again at a spread of offsets and the union of them is
-    // the shadow. That is the caster swept through the depth the card does not have.
-    //
-    // This is NOT the old smear, and the difference is the shader. That one stamped the
-    // full palette sideways, so the copies disagreed pixel by pixel and dithered into a
-    // slab, and each rooted on its own line so the near edge came off the hooves. Under
-    // sh_silhouette every copy is the same flat grey and they differ only in shape, so the
-    // union is one clean silhouette; the offset is vertical and equal both ways, so the
-    // near edge cannot pull off the feet.
-    //
-    // No sign anywhere: the offsets are symmetric about zero and fixed in screen space, so
-    // nothing here can reverse with the lamp, the facing, or anything else.
-    // THE TWO EDGES HELD APART, ACROSS THE RAY.
-    //
-    // The rig measures the shadow's edges at its hoof columns, which run along the BODY --
-    // so as soon as the caster points anywhere near the lamp those two points fall one
-    // behind the other along the ray and the width between them goes to nothing. The F3
-    // overlay draws it: two rays out of the lamp that are all but the same line. That is
-    // the thin shadow, and it is not a projection error, it is the wrong two points.
-    //
-    // What decides the width is their separation ACROSS the ray, and that is what gets a
-    // floor here. Measured through the same stations the strip is drawn from, and made up
-    // by laying the silhouette down again either side of the line, along the ray's own
-    // perpendicular -- symmetric, so there is no side to choose and nothing to flip, and
-    // bounded below by the dial, so no facing can be thinner than it is set to.
+    // Each entry below is one COPY of the strip, at a screen offset. Three kinds share the
+    // list: the strip itself; the K/L band, which fills the resting gap across the ray
+    // exactly as it always has; and the minimum-width ring, which redraws the strip on a
+    // small circle so the union is the shadow grown equally in every direction. How the
+    // ring decides whether to engage at all -- and why that decision is finally sound --
+    // is with the ring block below.    static _ox = array_create(24);
+    static _oy = array_create(24);
+    var _nc = 0;
+    _ox[_nc] = 0; _oy[_nc] = 0; _nc++;
+
     var _pnx = -_s.uy, _pny = _s.ux * 0.5;
     var _pn  = max(0.0001, sqrt(_pnx * _pnx + _pny * _pny));
     _pnx /= _pn;  _pny /= _pn;
-
     var _q0  = anim_shadow_station(_s, _g, _tt, _g.ub, _div, _ly);
     var _e0x = _q0.rx, _e0y = _q0.ry;
     var _q1  = anim_shadow_station(_s, _g, _tt, _g.uf, _div, _ly);
     var _sep = abs((_q1.rx - _e0x) * _pnx + (_q1.ry - _e0y) * _pny);
-
-    // Only the shortfall is made up, so a caster already broadside is left alone.
-    var _dd = max(0, _g.d - _sep) * 0.5;
-    var _cp = 6;
+    var _dd  = max(0, _g.d - _sep) * 0.5;      // only the shortfall against the K/L gap
+    var _cp  = 6;
     if (_dd > 0.5) {
         for (var k = -_cp; k <= _cp; k++) {
-            if (k == 0) continue;                     // k = 0 is the strip drawn above
-            var _ok = (k / _cp) * _dd;
-            draw_primitive_begin_texture(pr_trianglestrip, surface_get_texture(_cast_surf));
-            for (var j = 0; j <= _st; j++) {
-                var _u2 = -_lx + (j / _st) * _size;
-                var _q  = anim_shadow_station(_s, _g, _tt, _u2, _div, _ly);
-                var _v2 = (_u2 + _lx) / _size;
-                var _b2 = _q.hT / _size;
-                draw_vertex_texture_colour(_ax + _q.tx + _ok * _pnx,
-                                           _ay + _q.ty + _ok * _pny, _v2, 0,   _grey, 1);
-                draw_vertex_texture_colour(_ax + _q.rx + _ok * _pnx,
-                                           _ay + _q.ry + _ok * _pny, _v2, _b2, _grey, 1);
-            }
-            draw_primitive_end();
+            if (k == 0) continue;
+            _ox[_nc] = (k / _cp) * _dd * _pnx;
+            _oy[_nc] = (k / _cp) * _dd * _pny;
+            _nc++;
         }
     }
+
+    // THE RING ENGAGES ONLY ON THE SHORTFALL, so every cast already at the minimum width is
+    // drawn to the pixel as it always was -- radius zero adds no copies at all -- and a
+    // collapsing one is held AT the minimum rather than grown past it. Unconditional, the
+    // ring fattened every shadow in the room to fix the few that needed it.
+    //
+    // How thin this cast is comes from its ENVELOPE: the four corners of the OCCUPIED part
+    // of the card -- the caster's own span by its drawn height, NOT the mostly-empty 256px
+    // quad -- put through the same stations the strip is drawn from, and the narrowest
+    // caliper width of the quadrilateral they land on. Every earlier conditional derived
+    // thinness from geometry the screen does not draw and each was wrong somewhere; this
+    // one is exact precisely where it has to be, because a degenerate cast maps EVERYTHING
+    // onto its thin envelope, so at the failure the envelope width IS the visible width.
+    // Away from the failure it overestimates -- and there that only means the ring stays
+    // off, which is the correct answer anyway.
+    var _qa  = anim_shadow_station(_s, _g, _tt, -ANIM_SHADOW_WIDE * 0.5, _div, _ly);
+    var _wax = _qa.rx, _way = _qa.ry;                      // copied out: shared scratch
+    var _wk  = (_qa.hT > 1) ? min(1, ANIM_SHADOW_TALL / _qa.hT) : 0;
+    var _wdx = _qa.rx + (_qa.tx - _qa.rx) * _wk;           // tip at the DRAWN height, not
+    var _wdy = _qa.ry + (_qa.ty - _qa.ry) * _wk;           // the card's empty top edge
+    var _qb  = anim_shadow_station(_s, _g, _tt,  ANIM_SHADOW_WIDE * 0.5, _div, _ly);
+    var _wbx = _qb.rx, _wby = _qb.ry;
+    var _wk2 = (_qb.hT > 1) ? min(1, ANIM_SHADOW_TALL / _qb.hT) : 0;
+    var _wcx = _qb.rx + (_qb.tx - _qb.rx) * _wk2;
+    var _wcy = _qb.ry + (_qb.ty - _qb.ry) * _wk2;
+
+    // Narrowest caliper width: for each edge of the quad, how far the other two corners
+    // stand off its line; the smallest of those is how thin the envelope gets.
+    var _qw = 999999;
+    for (var e = 0; e < 4; e++) {
+        var _p1x = 0, _p1y = 0, _p2x = 0, _p2y = 0;
+        var _o1x = 0, _o1y = 0, _o2x = 0, _o2y = 0;
+        switch (e) {
+        case 0:  _p1x=_wax; _p1y=_way; _p2x=_wbx; _p2y=_wby;
+                 _o1x=_wcx; _o1y=_wcy; _o2x=_wdx; _o2y=_wdy; break;
+        case 1:  _p1x=_wbx; _p1y=_wby; _p2x=_wcx; _p2y=_wcy;
+                 _o1x=_wax; _o1y=_way; _o2x=_wdx; _o2y=_wdy; break;
+        case 2:  _p1x=_wcx; _p1y=_wcy; _p2x=_wdx; _p2y=_wdy;
+                 _o1x=_wax; _o1y=_way; _o2x=_wbx; _o2y=_wby; break;
+        default: _p1x=_wdx; _p1y=_wdy; _p2x=_wax; _p2y=_way;
+                 _o1x=_wbx; _o1y=_wby; _o2x=_wcx; _o2y=_wcy; break;
+        }
+        var _elx = _p2x - _p1x, _ely = _p2y - _p1y;
+        var _el  = sqrt(_elx * _elx + _ely * _ely);
+        if (_el < 0.001) continue;
+        var _d1 = abs((_o1x - _p1x) * _ely - (_o1y - _p1y) * _elx) / _el;
+        var _d2 = abs((_o2x - _p1x) * _ely - (_o2y - _p1y) * _elx) / _el;
+        _qw = min(_qw, max(_d1, _d2));
+    }
+
+    // Only the shortfall, halved into a radius: a 3px envelope gets a 1px ring and comes
+    // out at the minimum; a 5px one gets radius zero and is untouched to the pixel. The
+    // radius is continuous in the width, so nothing pops as a caster turns through the
+    // boundary. M and N move the minimum live; the macro starts it.
+    var _minw = global[$ "anim_shadow_thin"] ?? ANIM_SHADOW_THIN;
+    var _rr = clamp((_minw - _qw) * 0.5, 0, _minw * 0.5);
+    if (_rr > 0.15) {
+        for (var k = 0; k < 8; k++) {
+            _ox[_nc] = _rr * dcos(k * 45);
+            _oy[_nc] = _rr * dsin(k * 45);
+            _nc++;
+        }
+    }
+
+    // ONE primitive for every copy, joined by zero-area triangles: repeating the vertex
+    // either side of a join gives the bridging triangles no area, so they rasterise
+    // nothing and the copies stay separate shapes inside a single draw call.
+    draw_primitive_begin_texture(pr_trianglestrip, surface_get_texture(_cast_surf));
+    var _px2 = 0, _py2 = 0, _pu2 = 0, _pb2 = 0;
+    for (var c = 0; c < _nc; c++) {
+        var _cx2 = _ox[c], _cy2 = _oy[c];
+        if (c > 0) {
+            draw_vertex_texture_colour(_px2, _py2, _pu2, _pb2, _grey, 1);
+            draw_vertex_texture_colour(_kX[0] + _cx2, _kY[0] + _cy2, _kU[0], 0, _grey, 1);
+        }
+        for (var j = 0; j <= _st; j++) {
+            draw_vertex_texture_colour(_kX[j] + _cx2, _kY[j] + _cy2, _kU[j], 0,      _grey, 1);
+            draw_vertex_texture_colour(_kx[j] + _cx2, _ky[j] + _cy2, _kU[j], _kB[j], _grey, 1);
+        }
+        _px2 = _kx[_st] + _cx2;  _py2 = _ky[_st] + _cy2;
+        _pu2 = _kU[_st];         _pb2 = _kB[_st];
+    }
+    draw_primitive_end();
     shader_reset();
 }
 
@@ -1741,6 +1797,17 @@ function anim_draw(_rig, _clip, _play, _x, _y, _dir, _look, _is_player) {
     anim_paint(_p);
     anim_light_sheen(_p, _x, _y);
 }
+
+
+
+
+
+
+
+
+
+
+
 
 
 

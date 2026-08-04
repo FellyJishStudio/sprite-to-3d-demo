@@ -7,16 +7,15 @@ if (!global.anim_ready) {
         : ("Loading" + string_repeat(".", 1 + (get_timer() div 400000) mod 3)));
     exit;
 }
-// The shadow figure is the width floor from O/P, shown alongside what it actually buys:
-// a cast about 46 times it across, which is the number worth judging by eye. For scale the
-// horse sprite is 42px wide seen end-on, so a floor near 19 is life size.
+// edge K/L is the resting gap the band fills across the ray; min w M/N is the hard floor
+// under any shadow's width, the ring's diameter in anim_shadow_paint. O/P is the old
+// blanket fold, kept at zero.
 draw_text(16, 12, "fps " + string(fps) + "     fps_real " + string(fps_real)
                 + "     skeletons " + string(instance_number(obj_demo_skeleton))
                 + "     zoom " + string_format(zoom, 1, 1)
                 + "     shadow O/P " + string_format(global.anim_shadow_min_fold, 1, 3)
                 + "     edge K/L +" + string_format(global.anim_shadow_edge, 2, 0)
-                + " (" + string_format(global.anim_shadow_min_fold * 46
-                                     + global.anim_shadow_edge, 3, 0) + "px apart)");
+                + "   min w M/N " + string_format(global.anim_shadow_thin, 2, 1));
 
 // F2's sweep, and the warning that pressing it freezes the demo for about forty seconds.
 // "running..." is drawn on the frame BEFORE the sweep starts, so the screen actually shows
@@ -49,7 +48,7 @@ for (var i = 0; i < array_length(buttons); i++) {
 }
 
 draw_text(16 + array_length(buttons) * 92, 46,
-          "click to move   WASD/Shift also move   wheel zooms   Space sword   R shuffle look   N light   O/P fold   K/L edge gap   F3 cast overlay");
+          "click to move   WASD/Shift also move   wheel zooms   Space sword   R shuffle look   B light   M/N thin band   O/P fold   K/L edge gap   F3 cast overlay");
 draw_text(16 + array_length(buttons) * 92, 62,
           "right-click or hold left on a horse to ride");
 
@@ -59,4 +58,6 @@ if (menu_open) {
     draw_set_colour(c_white);  draw_rectangle(menu_x, menu_y, menu_x + 96, menu_y + 26, true);
     draw_text(menu_x + 10, menu_y + 5, _label);
 }
+
+
 

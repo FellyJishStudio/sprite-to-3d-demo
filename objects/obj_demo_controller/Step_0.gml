@@ -54,9 +54,9 @@ for (var i = 0; i < array_length(global.demo_lights); i++) {
     _L.h = LIGHT_H_MIN + (LIGHT_H_MAX - LIGHT_H_MIN) * (0.5 - 0.5 * cos(_L.t));
 }
 
-// N, not L: L now drags the shadow's measured edges apart (below), and a key that both
-// spawned a light and widened a shadow made every experiment with one contaminate the other.
-if (keyboard_check_pressed(ord("N"))) demo_add_light(mouse_x, mouse_y);
+// B, not N or L: those keys move shadow settings below, and a key that both spawned a lamp
+// and moved a shadow setting made every experiment with one contaminate the other.
+if (keyboard_check_pressed(ord("B"))) demo_add_light(mouse_x, mouse_y);
 
 // O and P dial the cast-shadow width floor live, so values can be compared on screen
 // instead of by rebuilding for each one. Held down they repeat, since finding the right
@@ -67,6 +67,19 @@ if (keyboard_check_pressed(ord("N"))) demo_add_light(mouse_x, mouse_y);
 // LETTER keys on purpose. ord() returns an ASCII code and keyboard_check wants a virtual
 // key code; those agree for letters and digits but not for punctuation, so ord("[") would
 // silently check something else entirely.
+// M and N set the MINIMUM WIDTH any shadow may come out at, in pixels. The ring in
+// anim_shadow_paint makes up only the SHORTFALL below this, so every cast already at least
+// this wide is untouched to the pixel and only a collapsing one is held at the floor. Zero
+// switches the floor off entirely, which is a legitimate setting rather than a trap, since
+// nothing else depends on it. Held to repeat; shift for a coarse step.
+var _thin_step = keyboard_check(vk_shift) ? 2 : 0.5;
+if (keyboard_check(ord("M"))) {
+    global.anim_shadow_thin = max(0, global.anim_shadow_thin - _thin_step);
+}
+if (keyboard_check(ord("N"))) {
+    global.anim_shadow_thin = min(31, global.anim_shadow_thin + _thin_step);
+}
+
 var _fold_step = keyboard_check(vk_shift) ? 0.02 : 0.005;
 if (keyboard_check(ord("O"))) {
     global.anim_shadow_min_fold = max(0, global.anim_shadow_min_fold - _fold_step);
@@ -237,5 +250,7 @@ if (mouse_check_button_pressed(mb_right)) {
     menu_open = (_near != noone);
     if (menu_open) { menu_target = _near; menu_x = _gx; menu_y = _gy; }
 }
+
+
 
 

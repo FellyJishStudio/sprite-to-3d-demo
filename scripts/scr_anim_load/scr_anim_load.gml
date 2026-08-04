@@ -1,4 +1,4 @@
-/// LOADING
+﻿/// LOADING
 ///
 /// Everything the runtime needs is pipeline output, read as data:
 ///
@@ -320,6 +320,9 @@ function anim_boot() {
     // Pixels of separation held between the two measured shadow edges. K and L in the demo;
     // the F3 overlay draws exactly this gap.
     global.anim_shadow_edge = ANIM_SHADOW_EDGE;
+    // The minimum width any part of any shadow may come out at -- the ring's diameter in
+    // anim_shadow_paint. M and N in the demo; the macro is only the starting value.
+    global.anim_shadow_thin = ANIM_SHADOW_THIN;
     anim_fetch("clips.json");
 }
 
@@ -382,6 +385,8 @@ function anim_async() {
     global.anim_ready = true;
     return true;
 }
+
+
 
 
 
