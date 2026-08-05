@@ -3,6 +3,11 @@
 
 anim_boot();          // asynchronous; the cast is spawned in Step once it finishes
 randomize();
+// ...except when profiling, where the run must be REPEATABLE. Fun mode rolls what it spawns
+// and where, so two runs of a random seed see different scenes -- and comparing a change
+// against that is comparing two different workloads. Two runs of the same seed do the same
+// things in the same order, which is the only way an A/B here means anything.
+if (environment_get_variable("THRONE_PROF") == "1") random_set_seed(20260805);
 // Timed, and the time is reported: this runs before the first frame, so its cost is dead
 // air on a black window. Only the cheap projection sweep is on this path. The exhaustive
 // flicker/mirror grid is 173,000 samples with a search inside each -- about forty seconds
@@ -108,7 +113,13 @@ batch_n     = 0;              // vertices in the open primitive; see demo_batch_
 // nothing then -- but with a dozen systems drawing every frame, "which one is slow" is a
 // question worth being able to answer with a number instead of a guess.
 prof_on = (environment_get_variable("THRONE_PROF") == "1");
-prof_ground = 0; prof_pools = 0; prof_shadow = 0; prof_front = 0;
+prof_ground = 0; prof_pools = 0; prof_shadow = 0; prof_front = 0; prof_t = 0;
+// THRONE_NOCULL=1 turns the caster culling and the caster cap OFF, so the same scene can be
+// measured with and without them. Claiming a speed-up without the before number is guessing.
+prof_nocull   = (environment_get_variable("THRONE_NOCULL") == "1");
+prof_charcull = (environment_get_variable("THRONE_CHARCULL") == "1");
+// ...and its opposite, to measure fun mode WITHOUT the character cull it normally gets.
+prof_funnocull = (environment_get_variable("THRONE_FUNNOCULL") == "1");
 view_x0     = 0;              // the camera rect, cached once a frame; see demo_view_cache
 view_y0     = 0;
 view_x1     = 0;
@@ -185,7 +196,9 @@ function demo_fx_light(_x, _y, _fx) {
         // Low and cool -- a projector sitting just above the floor it is aimed at.
         case "water":  _L.h =  44; _L.r = 400; _L.col = make_colour_rgb(26, 76, 104); break;
         case "galaxy": _L.h = 120; _L.r = 460; _L.col = make_colour_rgb(56, 34, 92);
-                       _L.stars = demo_galaxy_stars();                               break;
+                       _L.stars = demo_galaxy_stars();
+                       _L.gcut  = -1000000;    // "nobody in it": everything draws behind
+                       break;
         // A rig hung as high as it will go: the beams are drawn from the head down to the
         // floor, so the head's height IS how much beam there is to see.
         case "laser":  _L.h = 168; _L.r = 430; _L.col = make_colour_rgb(58, 24, 76);  break;
@@ -238,10 +251,10 @@ function demo_fx_paint(_L) {
     switch (_L.fx) {
         case "disco":  demo_fx_disco(_L);  break;
         case "water":  demo_fx_water(_L);  break;
-        case "galaxy": demo_fx_galaxy(_L); break;
-        // Only the beams that land BEHIND the characters. The rest are drawn over them in
-        // Draw End, by demo_fx_paint_front.
-        case "laser":  demo_fx_laser(_L, false); break;
+        case "galaxy": demo_fx_galaxy(_L, false); break;
+        // Lasers are NOT here: every rig's beams batch together across the whole scene, so
+        // they cannot be drawn one lamp at a time inside this loop. See demo_lasers_paint,
+        // called once per bucket.
     }
 }
 
@@ -252,8 +265,10 @@ function demo_fx_paint_front() {
     var _n = array_length(global.demo_lights);
     for (var i = 0; i < _n; i++) {
         var _L = global.demo_lights[i];
-        if (_L.fx == "laser") demo_fx_laser(_L, true);
+        if (!demo_on_screen(_L.x, _L.y, _L.r)) continue;
+        if (_L.fx == "galaxy") demo_fx_galaxy(_L, true);
     }
+    demo_lasers_paint(true);       // batched across every rig; see demo_lasers_paint
 }
 
 /// A rave rig: laser beams stabbing down from the emitter head onto points that sweep the
@@ -296,29 +311,86 @@ function demo_front_of(_gx, _gy, _rx, _up) {
     return _f;
 }
 
-/// One bucket of a rig's beams: `_front` true for the ones drawn over the characters in
-/// Draw End, false for the ones drawn down on the ground. See demo_beam_front for the split.
-function demo_fx_laser(_L, _front) {
-    var _hy = _L.y - _L.h;                       // the head: height is straight screen-y
-    // The whole rig blinks together now and then, the way one actually runs. Beams that
-    // only ever sweep read as a lighthouse. Multiplied up and clamped so it snaps between
-    // on and off instead of easing, which is what makes it read as switched rather than dimmed.
-    var _blink = 0.5 + 0.5 * clamp(dsin(_L.ft * 200) * 3.5, -1, 1);
+/// Work out a rig's beams for this frame -- where each lands, its colour, and which side of
+/// the characters it belongs on -- ONCE, and hang them on the light.
+///
+/// The depth test walks every character, and it used to run per beam in BOTH passes: at
+/// eighteen rigs that was three hundred and twenty-four instance walks a frame to answer a
+/// question whose answer had not changed between them.
+function demo_laser_prep(_L) {
+    var _b = array_create(9);
     for (var i = 0; i < 9; i++) {
         var _B = demo_laser_beam(_L, i);
-        if (demo_front_of(_B.x, _B.y, 50, 80) != _front) continue;
-        var _c = _B.c;
-        // Dim at the head, bright where it lands: a beam is only visible in the air by what
-        // it scatters off, and there is more of everything to scatter off near the floor.
-        draw_line_width_colour(_L.x, _hy, _B.x, _B.y, 5,
-                               demo_col_scale(_c, 0.16 * _blink),
-                               demo_col_scale(_c, 0.34 * _blink));
-        draw_line_width_colour(_L.x, _hy, _B.x, _B.y, 1,
-                               demo_col_scale(_c, 0.55 * _blink),
-                               demo_col_scale(_c, _blink));
-        var _dr = 3 + 2 * _blink;
-        draw_ellipse_colour(_B.x - _dr, _B.y - _dr * 0.5, _B.x + _dr, _B.y + _dr * 0.5,
-                            demo_col_scale(_c, _blink), c_black, false);
+        _B.front = demo_front_of(_B.x, _B.y, 50, 80);
+        _b[i] = _B;
+    }
+    _L.beams = _b;
+    _L.blink = 0.5 + 0.5 * clamp(dsin(_L.ft * 200) * 3.5, -1, 1);
+}
+
+/// Every laser rig's beams for one depth bucket, in TWO primitives for the whole scene.
+///
+/// This used to be three draw calls per beam -- two thick lines and a floor spot -- which at
+/// eighteen rigs is about five hundred draw calls a frame. The measured cost was not just
+/// the beams: the backlog stalled the surface switches in the shadow pass behind it, which
+/// is why doubling the rigs tripled a figure that has nothing to do with lasers.
+///
+/// Thick lines become quads because a line list has no width. Two per beam, wide-and-dim
+/// over thin-and-bright, which is the falloff that makes a beam read as light in air.
+function demo_lasers_paint(_front) {
+    var _n = array_length(global.demo_lights);
+    var _any = false;
+    for (var i = 0; i < _n; i++) {
+        var _L = global.demo_lights[i];
+        if (_L.fx != "laser" || !demo_on_screen(_L.x, _L.y, _L.r)) continue;
+        if (!_front) demo_laser_prep(_L);
+        _any = true;
+    }
+    if (!_any) return;
+
+    demo_batch_begin();
+    for (var i = 0; i < _n; i++) {
+        var _L = global.demo_lights[i];
+        if (_L.fx != "laser" || !demo_on_screen(_L.x, _L.y, _L.r)) continue;
+        var _hy = _L.y - _L.h;                   // the head: height is straight screen-y
+        var _bl = _L.blink;
+        if (_bl < 0.02) continue;
+        for (var j = 0; j < 9; j++) {
+            var _B = _L.beams[j];
+            if (_B.front != _front) continue;
+            var _dx = _B.x - _L.x, _dy = _B.y - _hy;
+            var _ln = max(0.001, sqrt(_dx * _dx + _dy * _dy));
+            var _nx = -_dy / _ln, _ny = _dx / _ln;
+            // Dim at the head, bright where it lands: a beam is only visible in the air by
+            // what it scatters off, and there is more of it to scatter off near the floor.
+            for (var k = 0; k < 2; k++) {
+                var _w  = (k == 0) ? 2.5 : 0.5;
+                var _c0 = demo_col_scale(_B.c, (k == 0 ? 0.16 : 0.55) * _bl);
+                var _c1 = demo_col_scale(_B.c, (k == 0 ? 0.34 : 1.00) * _bl);
+                var _ax = _nx * _w, _ay = _ny * _w;
+                demo_batch_room(6);
+                draw_vertex_colour(_L.x + _ax, _hy  + _ay, _c0, 1);
+                draw_vertex_colour(_L.x - _ax, _hy  - _ay, _c0, 1);
+                draw_vertex_colour(_B.x + _ax, _B.y + _ay, _c1, 1);
+                draw_vertex_colour(_L.x - _ax, _hy  - _ay, _c0, 1);
+                draw_vertex_colour(_B.x - _ax, _B.y - _ay, _c1, 1);
+                draw_vertex_colour(_B.x + _ax, _B.y + _ay, _c1, 1);
+            }
+        }
+    }
+    draw_primitive_end();
+
+    // The floor spots, as blob sprites -- one texture, so GameMaker batches them all.
+    for (var i = 0; i < _n; i++) {
+        var _L = global.demo_lights[i];
+        if (_L.fx != "laser" || !demo_on_screen(_L.x, _L.y, _L.r)) continue;
+        var _bl = _L.blink;
+        if (_bl < 0.02) continue;
+        for (var j = 0; j < 9; j++) {
+            var _B = _L.beams[j];
+            if (_B.front != _front) continue;
+            demo_blob(_B.x, _B.y, 3 + 2 * _bl, 0.5, _B.c, _bl);
+        }
     }
 }
 
@@ -372,9 +444,71 @@ function demo_blob(_x, _y, _r, _sq, _col, _a) {
 /// so nothing can quietly run past the end again.
 #macro BATCH_MAX 1200
 
-/// How many lights may cast shadows in one frame, however many are lit. See the ranking in
-/// Draw for why this exists and what it costs.
-#macro SHADOW_LIGHTS_MAX 5
+/// QUALITY TIERS. Every ceiling in the demo hangs off one setting, cycled from the HUD.
+///
+/// The two that matter most are the shadow caps: the frame cost of the shadow pass is
+/// essentially their product -- lights that cast, times characters that cast -- because each
+/// pair is a card projection and each casting character is a card render. Everything else
+/// here is a particle budget.
+///
+/// HIGH is what the demo has always done. LOW is meant to hold sixty frames with a hundred
+/// characters and fun mode running, which means giving up most of the shadows: two lights
+/// casting for four characters is eight projections a frame against high's seventy.
+function demo_set_quality(_q) {
+    global.demo_quality = _q;
+    switch (_q) {
+        case 0:     // low
+            global.q_shadow_lights  = 2;
+            global.q_shadow_casters = 4;
+            global.q_particle_lights = 3;
+            global.q_smoke   = 70;
+            global.q_rain    = 60;
+            global.q_shard   = 90;
+            global.q_star    = 3;      // draw every Nth galaxy star
+            global.q_taps    = false;  // one composite tap instead of five
+            global.q_charcull = true;  // always, not only in fun mode
+            // ...and fun mode throws fewer at once. The average was already over sixty; what
+            // pulls the FLOOR down is the moments when a glacier shatters over a blast over a
+            // fissure, and the only thing that helps there is fewer of them at a time.
+            global.q_burst   = 2;
+            global.q_gap     = 3;
+            break;
+        case 1:     // mid
+            global.q_shadow_lights  = 3;
+            global.q_shadow_casters = 8;
+            global.q_particle_lights = 5;
+            global.q_smoke   = 160;
+            global.q_rain    = 130;
+            global.q_shard   = 200;
+            global.q_star    = 2;
+            global.q_taps    = true;
+            global.q_charcull = true;
+            global.q_burst   = 3;
+            global.q_gap     = 2;
+            break;
+        default:    // high -- the demo as it was before tiers existed
+            global.q_shadow_lights  = 5;
+            global.q_shadow_casters = 14;
+            global.q_particle_lights = 8;
+            global.q_smoke   = 300;
+            global.q_rain    = 220;
+            global.q_shard   = 420;
+            global.q_star    = 1;
+            global.q_taps    = true;
+            global.q_charcull = false;   // fun mode still turns it on; see demo_view_cache
+            global.q_burst   = 3;
+            global.q_gap     = 2;
+            break;
+    }
+}
+/// The tier's name, for the button caption.
+function demo_quality_name() {
+    switch (global.demo_quality) {
+        case 0:  return "low";
+        case 1:  return "mid";
+        default: return "high";
+    }
+}
 
 /// Open a batch, and reserve room in it. `demo_batch_room` flushes and reopens when the next
 /// item will not fit -- always on an item boundary, never mid-shape.
@@ -422,6 +556,15 @@ function demo_view_cache() {
     view_y0 = camera_get_view_y(_c);
     view_x1 = view_x0 + camera_get_view_width(_c);
     view_y1 = view_y0 + camera_get_view_height(_c);
+    // The character box, published for their own Draw events. Generous upward, since a
+    // character's sprite stands well above the ground point it is positioned by.
+    // On below HIGH always; on HIGH only for fun mode, which keeps the benchmark honest.
+    global.cull_on = (global.demo_fun || global.q_charcull || prof_charcull)
+                     && !prof_funnocull;
+    global.cull_x0 = view_x0 - 60;
+    global.cull_x1 = view_x1 + 60;
+    global.cull_y0 = view_y0 - 110;
+    global.cull_y1 = view_y1 + 40;
 }
 function demo_on_screen(_x, _y, _r) {
     return (_x + _r > view_x0 && _x - _r < view_x1
@@ -478,9 +621,9 @@ function demo_light_cache() {
     // times a frame; the pools, the sheen and the shadows all still use the full set. A
     // fifteenth lamp contributing a few percent to the colour of a raindrop is not worth
     // what it costs to ask it.
-    if (array_length(_c) > PARTICLE_LIGHTS_MAX) {
+    if (array_length(_c) > global.q_particle_lights) {
         var _top = [];
-        repeat (PARTICLE_LIGHTS_MAX) {
+        repeat (global.q_particle_lights) {
             var _bi = -1, _bv = -1;
             for (var i = 0; i < array_length(_c); i++) {
                 if (_c[i].inf > _bv) { _bv = _c[i].inf; _bi = i; }
@@ -494,7 +637,6 @@ function demo_light_cache() {
     light_cache = _c;
     beam_cache  = _b;
 }
-#macro PARTICLE_LIGHTS_MAX 8
 
 /// How wide a beam's glow reaches, in ground units, and how hard it lights what it passes
 /// through. Generous on both counts: a mathematically thin beam lights nothing, and the
@@ -680,7 +822,6 @@ function demo_fires_paint(_front) {
     }
 }
 
-#macro SMOKE_MAX 300
 
 /// Add one puff, filling in the bookkeeping fields every puff needs whatever spawned it.
 ///
@@ -689,13 +830,12 @@ function demo_fires_paint(_front) {
 /// gained the fields it needed and the third did not, and the draw crashed the moment a
 /// glacier landed. One door in is worth more than three tidy copies.
 function demo_smoke_add(_p) {
-    if (array_length(global.demo_smoke) >= SMOKE_MAX) return false;
+    if (array_length(global.demo_smoke) >= global.q_smoke) return false;
     _p.ci  = 0;                   // frames until its light is resampled; see Draw End
     _p.col = c_white;
     array_push(global.demo_smoke, _p);
     return true;
 }
-#macro RAIN_MAX  220
 // A snow cell is about ten ground units square -- SNOW_CELL_Y is half SNOW_CELL_X because
 // screen y is half ground y under the 2:1 projection, so a square cell on the FLOOR is a
 // squat rectangle in these coordinates.
@@ -1136,7 +1276,6 @@ function demo_meteor_at(_M, _u) {
              z: _M.z0 * (1 - _u * _u) };
 }
 
-#macro SHARD_MAX     420
 #macro SHARD_GRAVITY 900      // screen units per second per second
 
 /// Put one flake of ground cover at (_x, _y), if that cell is free. The one-layer rule lives
@@ -1196,7 +1335,7 @@ function demo_glacier(_x, _y) {
 function demo_glacier_shatter(_x, _y, _size) {
     var _n = 46 + irandom(22);
     repeat (_n) {
-        if (array_length(global.demo_shards) >= SHARD_MAX) break;
+        if (array_length(global.demo_shards) >= global.q_shard) break;
         var _a  = random(360);
         var _sp = 30 + random(230);
         array_push(global.demo_shards, {
@@ -1429,40 +1568,80 @@ function demo_fx_water(_L) {
 ///
 /// The arms TRAIL -- a star further out sits further back around the turn -- which is what
 /// makes the whole figure read as rotating. Spokes at fixed angles merely spin.
-function demo_fx_galaxy(_L) {
+/// The screen y that splits a galaxy's stars into "in front of the characters" and "behind
+/// them": the y of the NEAREST character standing in it, or far away if none is.
+///
+/// One threshold for the whole figure, worked out once a frame. Testing each of six hundred
+/// stars against every character the way the lasers and bonfires do would be six hundred
+/// instance walks a frame, which is not worth it for specks. Comparing each star's ground y
+/// against one number is a single compare and gets the case that actually matters -- someone
+/// standing in the middle of the spiral, with stars passing behind their legs and in front
+/// of their chest.
+///
+/// Conservative, like the other depth splits here: with two characters in the same galaxy a
+/// star between them goes behind both, rather than risk drawing over the nearer one.
+function demo_galaxy_cut(_L, _R) {
+    var _cut = -1000000;
+    var _ry  = _R * 0.6;
+    with (obj_demo_player) {
+        if (mount == noone && abs(x - _L.x) < _R && abs(y - _L.y) < _ry) _cut = max(_cut, y);
+    }
+    with (obj_demo_horse) {
+        if (abs(x - _L.x) < _R && abs(y - _L.y) < _ry) _cut = max(_cut, y);
+    }
+    with (obj_demo_skeleton) {
+        if (abs(x - _L.x) < _R && abs(y - _L.y) < _ry) _cut = max(_cut, y);
+    }
+    return _cut;
+}
+
+/// `_front` picks the bucket. The ground pass runs first and works out the cut; the Draw End
+/// pass reads it back, so it is computed once however many times the figure is drawn.
+function demo_fx_galaxy(_L, _front) {
     // A THIRD of the reach, not half. At half, the figure was over twelve hundred pixels
     // across at the demo's own zoom -- wider than the window -- so only ever a slice of it
     // was on screen at once and the four arms read as one long sweep. The structure was
     // fine; you simply could not see enough of it at a time to tell.
     var _R = _L.r * 0.32, _spin = _L.ft * 13;
-    // Core, and a broad dust disc under the whole thing. Arms alone read as a few strings
-    // of dots on bare grass; the haze is what fills the space between them and makes it a
-    // galaxy rather than a spiral of beads.
-    for (var d = 3; d >= 1; d--) {
-        var _dr = _R * (0.30 + 0.24 * d);
-        draw_ellipse_colour(_L.x - _dr, _L.y - _dr * 0.5, _L.x + _dr, _L.y + _dr * 0.5,
-                            demo_col_scale(make_colour_rgb(96, 48, 150), 0.30 / d),
-                            c_black, false);
+    if (!_front) _L.gcut = demo_galaxy_cut(_L, _R);
+    var _cut = _L.gcut;
+    // The dust disc and the core lie flat at the lamp's own spot, so they take the lamp's
+    // depth and are never split.
+    if (!_front) {
+        // Core, and a broad dust disc under the whole thing. Arms alone read as a few
+        // strings of dots on bare grass; the haze is what fills the space between them and
+        // makes it a galaxy rather than a spiral of beads.
+        for (var d = 3; d >= 1; d--) {
+            var _dr = _R * (0.30 + 0.24 * d);
+            draw_ellipse_colour(_L.x - _dr, _L.y - _dr * 0.5, _L.x + _dr, _L.y + _dr * 0.5,
+                                demo_col_scale(make_colour_rgb(96, 48, 150), 0.30 / d),
+                                c_black, false);
+        }
     }
     // Nebula: real cloud INSIDE the spiral, at its own heights, drifting on its own slow
     // orbit. Stars alone leave clear air between them and the thing reads as a pattern of
-    // dots; the fog is what gives it depth to have stars in FRONT of and behind.
+    // dots; the fog is what gives it depth to have stars in FRONT of and behind. Split by
+    // the same rule the stars use -- a cloud is a thing standing on the floor too.
     for (var f = 0; f < 8; f++) {
         var _fp = f / 8;
         var _fa = _fp * 360 + _spin * 0.55 + f * 23;
         var _fr = _R * (0.14 + 0.58 * frac(f * 0.618));
         var _fz = 12 + 44 * (0.5 + 0.5 * dsin(f * 137 + _L.ft * 17));
+        var _fgy = _L.y + dsin(_fa) * _fr * 0.5;
+        if ((_fgy > _cut) != _front) continue;
         // Thin. At any more than this the fog filled the gaps BETWEEN the arms as brightly
         // as the arms themselves, and the whole figure went back to being one soft disc.
-        demo_blob(_L.x + dcos(_fa) * _fr,
-                  _L.y + dsin(_fa) * _fr * 0.5 - _fz,
+        demo_blob(_L.x + dcos(_fa) * _fr, _fgy - _fz,
                   22 + 18 * dsin(f * 71 + _L.ft * 21), 0.78,
                   merge_colour(make_colour_rgb(104, 40, 158),
                                make_colour_rgb( 40, 76, 176), _fp), 0.10);
     }
-    var _cr = 13 + 2 * dsin(_L.ft * 90);
-    draw_ellipse_colour(_L.x - _cr, _L.y - _cr * 0.5 - 22, _L.x + _cr, _L.y + _cr * 0.5 - 22,
-                        make_colour_rgb(255, 242, 224), c_black, false);
+    if (!_front) {
+        var _cr = 13 + 2 * dsin(_L.ft * 90);
+        draw_ellipse_colour(_L.x - _cr, _L.y - _cr * 0.5 - 22,
+                            _L.x + _cr, _L.y + _cr * 0.5 - 22,
+                            make_colour_rgb(255, 242, 224), c_black, false);
+    }
     // The field is laid out ONCE (demo_galaxy_stars) and only ROTATED here, which is the
     // whole reason six hundred stars are affordable: rotating precomputed ground offsets is
     // one cos and one sin for the entire galaxy, where placing each star from scratch was
@@ -1472,13 +1651,18 @@ function demo_fx_galaxy(_L) {
     // nobody can tell a diamond from a circle.
     var _st = _L.stars, _n = array_length(_st);
     var _cs = dcos(_spin), _sn = dsin(_spin);
+    var _step = global.q_star;      // 1 / 2 / 3: how many of the field to draw at all
     demo_batch_begin();
-    for (var i = 0; i < _n; i++) {
+    for (var i = 0; i < _n; i += _step) {
         var _S  = _st[i];
         var _gx = (_S.gx * _cs - _S.gy * _sn) * _R;
         var _gy = (_S.gx * _sn + _S.gy * _cs) * _R;
+        // A star sorts by the point on the FLOOR it stands over, not by where its lifted
+        // body happens to land on screen -- the same rule everything else here sorts by.
+        var _fy = _L.y + _gy * 0.5;
+        if ((_fy > _cut) != _front) continue;
         var _sx = _L.x + _gx;
-        var _sy = _L.y + _gy * 0.5 - _S.z;       // height is straight screen-y
+        var _sy = _fy - _S.z;                    // height is straight screen-y
         var _s  = _S.sz, _v = _S.sz * 0.5, _q = _S.q, _c = _S.c;
         demo_batch_room(6);
         draw_vertex_colour(_sx,      _sy - _v, _c, _q);
@@ -1782,8 +1966,18 @@ function demo_bolt(_x, _y) {
 depth       = 20000;          // the ground grid draws behind every character
 // Numeric second element = spawner action; a string names one of the toggles below.
 buttons     = [["+10", 10], ["+50", 50], ["-10", -10], ["reset", 0], ["wave", "wave"],
-               ["fun", "fun"]];
+               ["fun", "fun"], ["fx", "perf"]];
 global.demo_fun = false;      // see demo_fun_toggle
+// OFF-CAMERA CULLING FOR THE CHARACTERS THEMSELVES, and it is off by default on purpose.
+//
+// scr_anim_render deliberately has none: the demo dropped the cull the real game uses
+// (node_armature/Draw_0) so the fps readout measures what the animation actually costs
+// rather than where the camera happens to point. That is the right call for a benchmark and
+// the wrong one for fun mode, which is a spectacle with fifty skeletons in it -- so the cull
+// exists but only switches on with fun mode, and the box is published here for the character
+// Draw events to test against. Everything else in the demo still pays full cost.
+global.cull_on = false;
+global.cull_x0 = 0; global.cull_y0 = 0; global.cull_x1 = 0; global.cull_y1 = 0;
 fun_t           = 0;          // seconds until the next volley
 menu_open   = false;
 menu_x      = 0;
@@ -1888,5 +2082,6 @@ function demo_kill(_n) {
 // the event runs, in order -- they are not hoisted -- so calling this from the top of Create
 // found nothing there and took the whole boot down with it.
 demo_make_blob_sprite();      // every soft blob in the demo draws from this one texture
+demo_set_quality(2);          // high: the demo as it behaved before the tiers existed
 
 

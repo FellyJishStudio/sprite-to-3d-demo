@@ -14,10 +14,11 @@ draw_text(16, 12, "fps " + string(fps) + "     fps_real " + string(fps_real)
                 // The light count is here because the ceiling on it is gone: shadow work is
                 // per caster PER LIGHT, so this number is what fps_real is paying for.
                 // Lit / casting: the second number is the one fps_real is paying for, and it
-                // is capped (SHADOW_LIGHTS_MAX) however many lamps are up.
+                // is capped (global.q_shadow_lights) however many lamps are up.
                 + "     lights " + string(array_length(global.demo_lights))
-                + "/" + string(min(SHADOW_LIGHTS_MAX, array_length(global.demo_lights)))
+                + "/" + string(min(global.q_shadow_lights, array_length(global.demo_lights)))
                 + "     skeletons " + string(instance_number(obj_demo_skeleton))
+                + "/" + string(global.q_shadow_casters)
                 + "     zoom " + string_format(zoom, 1, 1)
                 + "     horse minw " + ((_hm != noone)
                       ? string_format(_hm[$ "shadow_minw"] ?? 0, 2, 1) : "-"));
@@ -31,6 +32,20 @@ if (prof_on) {
                   + "   front " + string_format(prof_front,  5, 0)
                   + "   (us)   smoke " + string(array_length(global.demo_smoke)));
     draw_set_colour(c_white);
+    // ...and the same numbers to stdout on a timer. Fun mode is STOCHASTIC -- one capture
+    // catches a glacier shattering over a blast and the next catches an empty field -- so a
+    // single frame says nothing about whether a change helped. A series does.
+    prof_t++;
+    if (prof_t >= 30) {
+        prof_t = 0;
+        show_debug_message("PROF ground " + string_format(prof_ground, 1, 0)
+                         + " pools "      + string_format(prof_pools,  1, 0)
+                         + " shadow "     + string_format(prof_shadow, 1, 0)
+                         + " front "      + string_format(prof_front,  1, 0)
+                         + " fps "        + string_format(fps_real, 1, 1)
+                         + " lights "     + string(array_length(global.demo_lights))
+                         + " smoke "      + string(array_length(global.demo_smoke)));
+    }
 }
 
 // F2's sweep, and the warning that pressing it freezes the demo for about forty seconds.
@@ -65,7 +80,10 @@ for (var i = 0; i < array_length(buttons); i++) {
     draw_rectangle(_x, 44, _x + 80, 74, false);
     draw_set_colour(c_white);
     draw_rectangle(_x, 44, _x + 80, 74, true);
-    draw_text(_x + 10, 52, buttons[i][0]);
+    // The quality button is a three-way, so it shows which way it is set rather than a
+    // fixed caption -- there is nothing else on screen that says what tier is running.
+    draw_text(_x + 10, 52, (buttons[i][1] == "perf") ? ("fx " + demo_quality_name())
+                                                     : buttons[i][0]);
 }
 
 draw_text(16 + array_length(buttons) * 92, 46,

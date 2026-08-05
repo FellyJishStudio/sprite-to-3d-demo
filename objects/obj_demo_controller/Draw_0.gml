@@ -1,4 +1,4 @@
-/// Ground lattice: isometric diamonds, 2 wide to 1 tall, matching the projection the rig is
+﻿/// Ground lattice: isometric diamonds, 2 wide to 1 tall, matching the projection the rig is
 /// drawn with. Two families of parallel lines, slope +/-0.5, so a diamond is TILE*2 x TILE.
 /// Drawn in world space at depth 20000, behind every character, and bounded to the camera
 /// rect rather than the whole room -- an infinite lattice needs no more than the view.
@@ -80,6 +80,7 @@ for (var i = 0; i < array_length(global.demo_lights); i++) {
 // of the light pools, which is why this sits at the end of the additive pass rather than
 // with the other ground work above it. Drawn before the pools, a fire was painted over by
 // its OWN pool: the flames vanished and left a bright ellipse sitting on the grass.
+demo_lasers_paint(false);   // every rig's beams in two primitives, not three calls each
 demo_fires_paint(false);
 gpu_set_blendmode(bm_normal);
 if (prof_on) { prof_pools = lerp(prof_pools, get_timer() - _pt, 0.08); _pt = get_timer(); }
@@ -116,7 +117,7 @@ if (global.anim_ready) {
         var _dx = _LC.x - _cx, _dy = (_LC.y - _cy) * 2;
         _sco[l] = (_LC[$ "pow"] ?? 1) * _LC.r / max(120, sqrt(_dx * _dx + _dy * _dy));
     }
-    repeat (min(SHADOW_LIGHTS_MAX, _nl)) {
+    repeat (min(global.q_shadow_lights, _nl)) {
         var _best = -1, _bs = 0;
         for (var l = 0; l < _nl; l++) {
             if (_sco[l] > _bs) { _bs = _sco[l]; _best = l; }
@@ -159,11 +160,60 @@ if (global.anim_ready) {
     // into each light in turn. The parts list is shared scratch, so a caster's casts must
     // all happen before the next one prepares -- which is what this loop does.
     var _cs = caster_surf, _cc = caster_cam;
-    var _casters = [];
     var _pw = instance_find(obj_demo_player, 0);
+
+    // WHO CASTS. Two free culls, then a cap.
+    //
+    // Rendering a caster's card is the expensive part -- a full-surface clear plus every one
+    // of its bones -- so both culls happen before it. Off screen first, with a margin that
+    // covers a shadow's own length since a caster just out of view still throws one into it;
+    // then whether any CASTING light actually reaches it, because a skeleton standing in the
+    // dark has no shadow to draw and finding that out costs a few square roots against the
+    // card's several thousand pixels.
+    var _cand = [];
+    with (obj_demo_skeleton) array_push(_cand, id);
+    var _casters = [];
+    var _pcx = (view_x0 + view_x1) * 0.5, _pcy = (view_y0 + view_y1) * 0.5;
+    var _rank = [];
+    for (var c = 0; c < array_length(_cand); c++) {
+        var _C2 = _cand[c];
+        if (!prof_nocull && !demo_on_screen(_C2.x, _C2.y, 120)) continue;
+        // The range test written out, NOT anim_light_shadow. That returns a fresh struct,
+        // and asking it fifty times over five lights purely for a yes/no was two hundred and
+        // fifty allocations a frame -- it cost more than the culling saved. Same condition
+        // it uses (through-the-air distance inside the radius), squared so there is no root.
+        var _lit = false;
+        for (var l = 0; l < _nl; l++) {
+            if (!_act[l]) continue;
+            var _LL = global.demo_lights[l];
+            var _r2 = _LL.r * _LL.r - _LL.h * _LL.h;
+            if (_r2 <= 0) continue;
+            var _ex = _C2.x - _LL.x, _ey = (_C2.y - _LL.y) * 2;   // iso ground metric
+            if (_ex * _ex + _ey * _ey <= _r2) { _lit = true; break; }
+        }
+        if (!prof_nocull && !_lit) continue;
+        var _ddx = _C2.x - _pcx, _ddy = (_C2.y - _pcy) * 2;      // iso ground metric
+        array_push(_rank, { o: _C2, d: _ddx * _ddx + _ddy * _ddy });
+    }
+    var _cap = prof_nocull ? array_length(_rank) : global.q_shadow_casters;
+    // ...and a CAP on how many of the survivors cast, nearest to the middle of the view
+    // first. With a crowd standing in one pool every one of them is on screen and lit, and
+    // fifty card renders a frame is a slideshow. This is a visible trade -- a skeleton at
+    // the edge of a crowd loses its shadow -- taken because the alternative is everyone's
+    // shadow at fifteen frames a second.
+    repeat (min(_cap, array_length(_rank))) {
+        var _bi = -1, _bd = 999999999;
+        for (var i = 0; i < array_length(_rank); i++) {
+            if (_rank[i].d < _bd) { _bd = _rank[i].d; _bi = i; }
+        }
+        if (_bi < 0) break;
+        array_push(_casters, _rank[_bi].o);
+        _rank[_bi].d = 9999999999;      // taken; never picked again
+    }
+    // The player and its mount always cast, cap or no cap: they are what the demo is about.
     if (_pw != noone && _pw.mount == noone) array_push(_casters, _pw);
-    with (obj_demo_skeleton) array_push(_casters, id);
-    with (obj_demo_horse)    array_push(_casters, id);
+    with (obj_demo_horse) array_push(_casters, id);
+
     for (var c = 0; c < array_length(_casters); c++) {
         var _C2 = _casters[c];
         var _pr;
@@ -259,7 +309,10 @@ if (global.anim_ready) {
     for (var l = 0; l < _nl; l++) {
         if (!_act[l]) continue;      // its surface holds last frame's stamps; do not use it
         if (l >= array_length(shadow_surfs) || !surface_exists(shadow_surfs[l])) continue;
-        draw_surface_ext(shadow_surfs[l], _x0,     _y0,     1, 1, 0, _scC, 1);
+        draw_surface_ext(shadow_surfs[l], _x0, _y0, 1, 1, 0, _scC, 1);
+        // The four softening taps are the first thing LOW gives up: they are four extra
+        // full-screen blits per casting light for a one-pixel feather on the outlines.
+        if (!global.q_taps) continue;
         draw_surface_ext(shadow_surfs[l], _x0 - 1, _y0 - 1, 1, 1, 0, _scO, 1);
         draw_surface_ext(shadow_surfs[l], _x0 + 1, _y0 - 1, 1, 1, 0, _scO, 1);
         draw_surface_ext(shadow_surfs[l], _x0 - 1, _y0 + 1, 1, 1, 0, _scO, 1);

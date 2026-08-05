@@ -155,10 +155,10 @@ if (keyboard_check_pressed(ord("C"))) { demo_clear_all(); global.demo_fun = fals
 if (global.demo_fun) {
     fun_t -= _dt;
     if (fun_t <= 0) {
-        fun_t = 2;
+        fun_t = global.q_gap;
         var _fp = instance_find(obj_demo_player, 0);
         if (_fp != noone) {
-            repeat (3) {
+            repeat (global.q_burst) {
                 var _fa = random(360), _fd = 90 + random(200);
                 demo_fun_burst(_fp.x + lengthdir_x(_fd, _fa),
                                _fp.y + lengthdir_y(_fd, _fa) * 0.5);   // iso, on the floor
@@ -174,7 +174,7 @@ if (global.demo_rain) {
     var _rc = view_camera[0];
     var _rx = camera_get_view_x(_rc), _ry = camera_get_view_y(_rc);
     var _rw = camera_get_view_width(_rc), _rh = camera_get_view_height(_rc);
-    repeat (min(7, RAIN_MAX - array_length(global.demo_drops))) {
+    repeat (min(7, global.q_rain - array_length(global.demo_drops))) {
         array_push(global.demo_drops, {
             x  : _rx + random(_rw),
             // A drop lands where it started but is DRAWN a height above that, so the band
@@ -192,7 +192,7 @@ for (var d = array_length(global.demo_drops) - 1; d >= 0; d--) {
     _D.z -= _D.vz * _dt;
     if (_D.z > 0) continue;
     array_delete(global.demo_drops, d, 1);
-    if (array_length(global.demo_ripples) < RAIN_MAX) {
+    if (array_length(global.demo_ripples) < global.q_rain) {
         // col -1 means "not sampled yet"; demo_rain_paint fills it in on the first frame.
         array_push(global.demo_ripples, { x: _D.x, y: _D.y, t: 0, dur: 0.42, col: -1 });
     }
@@ -422,13 +422,47 @@ if (keyboard_check_pressed(ord("S"))) demo_fx_light(mouse_x, mouse_y, "laser");
 // THRONE_FX=fire2: TWO bonfires, to reproduce the rays reported between a pair of them.
 // One is placed so a character stands in front of it and one so nobody does, which puts
 // them in opposite depth buckets -- the case a single fire can never exercise.
+// THRONE_FX=lamps: a wall of ONE kind of effect lamp, to price that kind on its own.
+// THRONE_LAMP picks which and THRONE_N how many; nothing else runs, so the `pools` figure
+// is that effect and nothing else.
+if (environment_get_variable("THRONE_FX") == "lamps") {
+    if (!variable_instance_exists(id, "fx_t")) {
+        fx_t = 0;
+        global.demo_lights = [];
+        var _kind = environment_get_variable("THRONE_LAMP");
+        if (_kind == "") _kind = "water";
+        var _ln = environment_get_variable("THRONE_N");
+        var _lc = (_ln != "" && string_digits(_ln) == _ln) ? real(_ln) : 6;
+        var _lp = instance_find(obj_demo_player, 0);
+        // Spread across the view, so all of them are on screen and none is culled.
+        for (var i = 0; i < _lc; i++) {
+            demo_fx_light(_lp.x + ((i mod 3) - 1) * 210,
+                          _lp.y + ((i div 3) - 1) * 120, _kind);
+        }
+    }
+    fx_t++;
+    with (obj_demo_player) { target_x = x; target_y = y; }
+    if (fx_t == 700) screen_save("lamps.png");
+    if (fx_t == 720) game_end();
+}
+
 // THRONE_FX=fun: fun mode from the first frame, for measuring what it actually costs.
 if (environment_get_variable("THRONE_FX") == "fun") {
-    if (!variable_instance_exists(id, "fx_t")) { fx_t = 0; demo_fun_toggle(); }
+    if (!variable_instance_exists(id, "fx_t")) {
+        fx_t = 0;
+        demo_fun_toggle();
+        // The reported case: fun mode with a crowd. Shadow work is per caster PER LIGHT, so
+        // this is the load that matters, not the effects on their own. Both the crowd size
+        // and the quality tier come from the environment, so one build measures every combo.
+        var _sk = environment_get_variable("THRONE_SKELES");
+        demo_spawn(((_sk != "" && string_digits(_sk) == _sk) ? real(_sk) : 50) - 3);
+        var _qq = environment_get_variable("THRONE_Q");
+        if (_qq != "" && string_digits(_qq) == _qq) demo_set_quality(real(_qq));
+    }
     fx_t++;
-    if (fx_t == 260) screen_save("fun_a.png");
-    if (fx_t == 500) screen_save("fun_b.png");
-    if (fx_t == 520) game_end();
+    if (fx_t == 260)  screen_save("fun_a.png");
+    if (fx_t == 900)  screen_save("fun_b.png");
+    if (fx_t == 1400) game_end();      // long enough for the PROF series to be worth averaging
 }
 
 if (environment_get_variable("THRONE_FX") == "fire2") {
@@ -489,8 +523,13 @@ if (environment_get_variable("THRONE_FX") == "galaxy") {
     if (fx_t == 2) {
         global.demo_lights = [];
         var _ps = instance_find(obj_demo_player, 0);
-        demo_fx_light(_ps.x + 60, _ps.y + 40, "galaxy");
+        // Centred ON the rider, which is the case the depth split exists for: stars whose
+        // floor position is nearer than the horse must pass in front of it, and the rest
+        // behind. Off to one side nothing overlaps and there is nothing to see.
+        demo_fx_light(_ps.x, _ps.y, "galaxy");
     }
+    // Hold the rider still, or it wanders off its own galaxy and there is nothing to judge.
+    with (obj_demo_player) { target_x = x; target_y = y; }
     if (fx_t == 24) screen_save("gal_a.png");
     if (fx_t == 90) screen_save("gal_b.png");
     if (fx_t == 96) game_end();
@@ -659,7 +698,9 @@ if (mouse_check_button_pressed(mb_left)) {
                 var _pw = instance_find(obj_demo_player, 0);
                 if (_pw != noone) _pw.wave_t = 2.7;
             }
-            else if (_n == "fun") demo_fun_toggle();
+            else if (_n == "fun")  demo_fun_toggle();
+            // Cycles high -> mid -> low -> high. See demo_set_quality for what each buys.
+            else if (_n == "perf") demo_set_quality((global.demo_quality + 2) mod 3);
             // Reset is the C key with the cast put back as well -- one behaviour, one place.
             else if (_n == 0) {
                 demo_kill(instance_number(obj_demo_skeleton));
