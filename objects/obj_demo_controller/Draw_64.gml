@@ -75,15 +75,19 @@ for (var i = 0; i < array_length(buttons); i++) {
     var _x = 16 + i * 92;
     // Fun mode is a TOGGLE, so its button shows which way it is set. The others are actions
     // and have no state to show.
-    var _on = (buttons[i][1] == "fun" && global.demo_fun);
+    var _on = (buttons[i][1] == "fun"  && global.demo_fun)
+           || (buttons[i][1] == "cull" && global.cull_forced_off);
     draw_set_colour(_on ? make_colour_rgb(150, 40, 20) : c_black);
     draw_rectangle(_x, 44, _x + 80, 74, false);
     draw_set_colour(c_white);
     draw_rectangle(_x, 44, _x + 80, 74, true);
-    // The quality button is a three-way, so it shows which way it is set rather than a
-    // fixed caption -- there is nothing else on screen that says what tier is running.
-    draw_text(_x + 10, 52, (buttons[i][1] == "perf") ? ("fx " + demo_quality_name())
-                                                     : buttons[i][0]);
+    // The quality button shows which way it is set rather than a fixed caption -- there is
+    // nothing else on screen that says what tier is running. The cull button likewise names
+    // the STATE, because "how many of these are actually being drawn" is the whole point of it.
+    var _cap = buttons[i][0];
+    if (buttons[i][1] == "perf") _cap = "fx " + demo_quality_name();
+    else if (buttons[i][1] == "cull") _cap = global.cull_forced_off ? "cull off" : "cull";
+    draw_text(_x + 10, 52, _cap);
 }
 
 draw_text(16 + array_length(buttons) * 92, 46,

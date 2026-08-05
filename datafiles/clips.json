@@ -37,6 +37,18 @@
     "z": true
   },
   {
+    "id": "anim_die",
+    "rig": "humanoid",
+    "sampleRate": 20,
+    "playback": "once"
+  },
+  {
+    "id": "anim_die_back",
+    "rig": "humanoid",
+    "sampleRate": 20,
+    "playback": "once"
+  },
+  {
     "id": "sq_horse_idle_state",
     "rig": "horse",
     "sampleRate": 4,

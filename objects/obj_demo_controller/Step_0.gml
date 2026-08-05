@@ -3,6 +3,15 @@
         ? !global.anim_debug_depth : true;   // F1: paint-order + depth overlay
 }
 
+// The phone tier's baked knockdowns, built the moment that tier is SELECTED and kept for the
+// rest of the session. Here rather than at boot because it needs the rigs loaded, and here
+// rather than on the first hit because it is a few hundred solver steps in one frame -- a
+// hitch nobody notices when they press a quality button, and a very obvious one mid-explosion.
+if (global.demo_quality == 0 && global.demo_dolls == undefined) {
+    var _bs = instance_find(obj_demo_skeleton, 0);
+    if (_bs != noone) global.demo_dolls = anim_doll_bake(_bs.rig, _bs.look, 3);
+}
+
 // F3: the cast-geometry overlay -- the measured shadow edges and the lamp's two rays
 // through them. Drawn in Draw_0; see the note there.
 if (keyboard_check_pressed(vk_f3)) {
@@ -81,6 +90,7 @@ for (var g = array_length(global.demo_glaciers) - 1; g >= 0; g--) {
         _G.light.h     = 26;
     }
     demo_glacier_shatter(_G.tx, _G.ty, _G.size);
+    demo_hit(_G.tx, _G.ty, 130);        // the slab lands on whatever was standing there
 }
 
 // Shard physics: gravity, a bounce that keeps about a third of the impact, friction while
@@ -422,6 +432,60 @@ if (keyboard_check_pressed(ord("S"))) demo_fx_light(mouse_x, mouse_y, "laser");
 // THRONE_FX=fire2: TWO bonfires, to reproduce the rays reported between a pair of them.
 // One is placed so a character stands in front of it and one so nobody does, which puts
 // them in opposite depth buckets -- the case a single fire can never exercise.
+// THRONE_FX=hit: a ring of skeletons round the rider and one blast in the middle of them,
+// captured through the fall, the stall and the getting up.
+if (environment_get_variable("THRONE_FX") == "hit") {
+    if (!variable_instance_exists(id, "fx_t")) {
+        fx_t = 0;
+        // THRONE_Q here too, so the knockdown itself can be looked at on every tier -- the
+        // phone tier's canned falls are a different code path and need their own eyes on them.
+        var _hq = environment_get_variable("THRONE_Q");
+        if (_hq != "" && string_digits(_hq) == _hq) demo_set_quality(real(_hq));
+    }
+    fx_t++;
+    // The ring waits a few frames. The rider spawns at the room centre and only MOUNTS on
+    // its next step, which teleports it to the saddle two hundred and forty pixels away --
+    // build the ring on frame one and it ends up around where the rider used to be.
+    if (fx_t == 3) {
+        var _hp = instance_find(obj_demo_player, 0);
+        with (obj_demo_skeleton) instance_destroy();
+        // A SPIRAL, not a ring: the radius grows with the angle, so the same shot shows
+        // every distance from the core at once and the falloff is visible in one frame.
+        //
+        // All facing screen-RIGHT, which is side-on to the camera and the one facing where a
+        // fall is fully legible -- face them up or down the screen and the whole body is
+        // foreshortened into a heap that shows nothing. Facing right also splits them
+        // cleanly: those LEFT of the blast have it in front of them and go over backwards,
+        // those to its right have it behind and pitch forward.
+        for (var i = 0; i < 14; i++) {
+            var _ha = i * 52;
+            var _hr = 22 + i * 11;
+            var _hs = instance_create_depth(_hp.x + lengthdir_x(_hr, _ha),
+                                            _hp.y + lengthdir_y(_hr, _ha) * 0.5,
+                                            0, obj_demo_skeleton);
+            _hs.direction = 0;
+        }
+    }
+    with (obj_demo_player) { target_x = x; target_y = y; }
+    // Immediately: they flee the rider, so a blast a second later lands on empty grass.
+    if (fx_t == 5) {
+        var _hp2 = instance_find(obj_demo_player, 0);
+        demo_boom(_hp2.x, _hp2.y);   // its own hitbox knocks the ring down; see demo_hit
+    }
+    // A SECOND blast, once the first crowd has settled, to show the re-hit: bodies already
+    // on the floor get thrown again rather than lying there ignoring it.
+    if (fx_t == 100) {
+        var _hp3 = instance_find(obj_demo_player, 0);
+        demo_boom(_hp3.x + 60, _hp3.y + 30);
+    }
+    if (fx_t == 8)   screen_save("hit_e.png");    // just gone limp -- limbs still where the pose left them
+    if (fx_t == 11)  screen_save("hit_a.png");    // tumbling through the air, limbs trailing
+    if (fx_t == 20)  screen_save("hit_b.png");    // hitting the ground and folding
+    if (fx_t == 90)  screen_save("hit_c.png");    // settled, each one in its own shape
+    if (fx_t == 112) screen_save("hit_d.png");    // punted again by the second blast
+    if (fx_t == 400) game_end();
+}
+
 // THRONE_FX=lamps: a wall of ONE kind of effect lamp, to price that kind on its own.
 // THRONE_LAMP picks which and THRONE_N how many; nothing else runs, so the `pools` figure
 // is that effect and nothing else.
@@ -699,8 +763,13 @@ if (mouse_check_button_pressed(mb_left)) {
                 if (_pw != noone) _pw.wave_t = 2.7;
             }
             else if (_n == "fun")  demo_fun_toggle();
+            // Pins the character cull off, so the skeleton count on screen is the count being
+            // DRAWN. This is the switch a device test needs: the crowd-capacity question is
+            // about visible characters, and fun mode's cull hides most of them.
+            else if (_n == "cull") global.cull_forced_off = !global.cull_forced_off;
             // Cycles high -> mid -> low -> high. See demo_set_quality for what each buys.
-            else if (_n == "perf") demo_set_quality((global.demo_quality + 2) mod 3);
+            else if (_n == "perf") demo_set_quality((global.demo_quality + DEMO_QUALITIES - 1)
+                                                    mod DEMO_QUALITIES);
             // Reset is the C key with the cast put back as well -- one behaviour, one place.
             else if (_n == 0) {
                 demo_kill(instance_number(obj_demo_skeleton));

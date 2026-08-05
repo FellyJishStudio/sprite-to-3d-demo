@@ -220,6 +220,11 @@ if (global.anim_ready) {
         if (object_is_ancestor(_C2.object_index, obj_demo_horse)
             || _C2.object_index == obj_demo_horse) {
             _pr = anim_shadow_prep_pair(_C2, _cs, _cc);
+        } else if (_C2.object_index == obj_demo_skeleton && _C2.doll != undefined) {
+            // A downed body throws the shadow of the shape it is ACTUALLY in. Carding the clip
+            // instead would put a neatly posed silhouette under a heap of splayed limbs.
+            _pr = anim_doll_shadow_prep(_C2.doll, _C2.rig, _C2.x, _C2.y,
+                                        _C2.direction, _cs, _cc);
         } else {
             _pr = anim_shadow_prep_char(_C2.rig, _C2.clip, _C2.play, _C2.x, _C2.y,
                                         _C2.direction, _C2.look,

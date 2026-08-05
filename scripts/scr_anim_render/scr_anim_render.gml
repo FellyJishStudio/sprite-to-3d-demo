@@ -140,8 +140,14 @@ function anim_mount_state(_rig, _dir) {
 ///
 /// Appends to `_parts` rather than drawing, so a mount and its rider can share one sorted
 /// list. Positions are absolute.
+/// `_cap`, when supplied, receives one entry per part pushed, describing WHERE that part came
+/// from: which chain, which bone, and where the bone's far end landed. The drawn list alone
+/// cannot say that -- it is flattened, and a bone records only its near joint -- so the
+/// ragdoll (scr_anim_doll) would otherwise have to re-derive the projection and drift out of
+/// step with this function the first time either changed. It is written once per knockdown,
+/// never per frame, and costs one comparison per part when nobody asks for it.
 function anim_build(_parts, _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
-                    _mount = undefined) {
+                    _mount = undefined, _cap = undefined) {
     var _f    = anim_facing(_rig, _dir, _is_player);
     var _dcos = _f.dcos, _zsin = _f.zsin, _mir = _f.mirror, _down = _f.down;
     var _dat  = _clip.data;
@@ -151,6 +157,7 @@ function anim_build(_parts, _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
     // built for every character with an arm chain, sword or not.
     static _tip = { x:0, y:0, depth:0, ang:0 };
     var _has_tip = false;
+    var _tip_part = -1;                           // which drawn part the sword hangs off, for _cap
     var _base  = array_length(_parts);            // where this character's parts start
 
     // Shadows build with the SAME iso tilt as the drawn figure. The horse's art is
@@ -287,6 +294,7 @@ function anim_build(_parts, _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
                 _pys,
                 _col,
                 _dat[_r + ANIM_ALPHA]);
+            if (_cap != undefined) array_push(_cap, { k: 0, c: c, i: 0 });
             continue;
         }
 
@@ -335,6 +343,7 @@ function anim_build(_parts, _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
             var _col = _cols[_m.tintIdx];
             if (_col == undefined) continue;
             var _sw  = _m.len * _dat[_row[i] + ANIM_XSCALE];
+            if (c == _rig.armChain && i == _n - 1) _tip_part = array_length(_parts) div PART.SIZE;
             array_push(_parts,
                 _depth,
                 _m.sprite,
@@ -346,6 +355,9 @@ function anim_build(_parts, _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
                 _dat[_row[i] + ANIM_YSCALE] * _mir,
                 _col,
                 _dat[_row[i] + ANIM_ALPHA]);
+            if (_cap != undefined) {
+                array_push(_cap, { k: 1, c: c, i: i, nx: _nx, ny: _ny, sw: _sw });
+            }
         }
         // Only record the pin if something was actually emitted, or it would point at the
         // next chain's first part.
@@ -370,6 +382,7 @@ function anim_build(_parts, _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
             (_a.sub == "back") ? _back : _a.sub,
             _parts[_p + PART.X], _parts[_p + PART.Y], _parts[_p + PART.ANG],
             _parts[_p + PART.XS], _parts[_p + PART.YS], _col, 1);
+        if (_cap != undefined) array_push(_cap, { k: 2, ref: _p div PART.SIZE });
     }
 
     var _sword = _look[$ "sword"];
@@ -380,6 +393,7 @@ function anim_build(_parts, _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
         if (_f.left) { _ang += 180; _sx = -1; }   // and the blade comes past the head
         array_push(_parts, _tip.depth + (_f.left ? 1 : 0), _look.sword_spr, 0,
                    _tip.x, _tip.y, _ang, _sx, 1, _sword, 1);
+        if (_cap != undefined) array_push(_cap, { k: 2, ref: _tip_part });
     }
 
     // Ground shadows. The client pins the horse's pair to the DRAWN body halves, +25 in y
@@ -387,17 +401,26 @@ function anim_build(_parts, _rig, _clip, _play, _x, _y, _dir, _look, _is_player,
     // huge depth just puts them at the back of this character's own paint order.
     // The blob hands over to the cast-shadow system as lights get close: anim_blob_scale.
     var _shade = _look[$ "shadow"];
-    var _blob_a = (_shade != undefined) ? anim_blob_scale(_x, _y) : 0;
+    var _cheap = (_shade != undefined && global.q_blobshadow)
+               ? anim_blob_cheap(_x, _y, _look.shadow_spr) : undefined;
+    var _blob_a = (_shade == undefined) ? 0
+                : ((_cheap != undefined) ? _cheap.a : anim_blob_scale(_x, _y));
     if (_shade != undefined && _blob_a > 0.02) {
+        var _bdx = (_cheap == undefined) ? 0 : _cheap.dx;
+        var _bdy = (_cheap == undefined) ? 0 : _cheap.dy;
+        var _bkx = (_cheap == undefined) ? 1 : _cheap.kx;
+        var _bky = (_cheap == undefined) ? 1 : _cheap.ky;
+        var _bag = (_cheap == undefined) ? 0 : _cheap.ang;
         var _spec = _rig.shadow;
         for (var i = 0; i < array_length(_spec); i++) {
             var _s = _spec[i];
             var _p = (_s.at < 0) ? -1 : _start[_s.at];
             if (_s.at >= 0 && _p < 0) continue;              // that chain was not drawn
             array_push(_parts, 1000000, _look.shadow_spr, _s.sub,
-                (_p < 0) ? _x : _parts[_p + PART.X],
-                ((_p < 0) ? _y : _parts[_p + PART.Y]) + _s.dy,
-                0, _s.sx, _s.sy, _shade, _s.alpha * _blob_a);
+                ((_p < 0) ? _x : _parts[_p + PART.X]) + _bdx,
+                ((_p < 0) ? _y : _parts[_p + PART.Y]) + _s.dy + _bdy,
+                _bag, _s.sx * _bkx, _s.sy * _bky, _shade, _s.alpha * _blob_a);
+            if (_cap != undefined) array_push(_cap, { k: 3, dy: _s.dy });
         }
     }
 
@@ -1800,6 +1823,81 @@ function anim_blob_scale(_x, _y) {
     return 1 - _best;
 }
 
+/// THE CHEAP SHADOW, for tiers that render no cast shadows at all.
+///
+/// The handover above runs the wrong way round when nothing is there to hand over TO: the blob
+/// fades as a light approaches, so on the phone tier a character standing in a lamp -- the one
+/// place a shadow is most obviously missing -- had none at all. Here the rule inverts. The blob
+/// gets STRONGER under a light, and slides away from it along the ground, growing as it goes.
+///
+/// It is one sprite, already being drawn, moved and scaled: no surface, no silhouette pass, no
+/// per-light anything. It cannot do a shape -- it is an oval under everybody -- but it does the
+/// two things that actually ground a figure, which are being darkest where the light is
+/// strongest and pointing the right way.
+/// POWER matters as much as nearness. A blast runs `pow` 3.2 and a lightning strike 6 against a
+/// lamp's 1, and the cast-shadow system already darkens its wash by that ratio -- so the cheap
+/// stand-in has to as well, or an explosion going off at someone's feet lays down exactly the
+/// shadow a candle would. The blob's own alpha is 0.4, so the multiplier is allowed well past 1:
+/// that headroom is the whole range between "soft patch on the grass" and "black".
+function anim_blob_cheap(_x, _y, _spr) {
+    static _r = { a: 1, dx: 0, dy: 0, ang: 0, kx: 1, ky: 1 };
+    // The sprite's own half-width, so the throw below can be derived from the length rather
+    // than guessed at. Cached because every character in the room shares one shadow sprite.
+    static _cspr = -1; static _chalf = 8;
+    if (_spr != _cspr) { _cspr = _spr; _chalf = sprite_get_width(_spr) * 0.5; }
+    var _ls = global.demo_lights;
+    var _best = 0, _bp = 1, _bs = 0, _bx = 0, _by = 0;
+    for (var i = 0; i < array_length(_ls); i++) {
+        var _L = _ls[i];
+        var _dgx = _x - _L.x, _dgy = (_y - _L.y) * 2;      // iso ground metric
+        var _gd = sqrt(_dgx * _dgx + _dgy * _dgy);
+        var _d3 = sqrt(_gd * _gd + _L.h * _L.h);
+        if (_d3 >= _L.r) continue;
+        var _at = 1 - _d3 / _L.r;
+        // `_L.pow` directly, NOT `_L[$ "pow"] ?? 1`. The guarded form elsewhere in the demo is
+        // fine because it runs once per light per frame; this loop runs once per light per
+        // CHARACTER per frame, and at a hundred of them that is a thousand string-hashed struct
+        // lookups a frame. demo_add_light puts `pow` in the struct literal, so it is always
+        // there and the guard was never doing anything.
+        var _pw = _L.pow;
+        // The strongest light wins OUTRIGHT rather than blending, and "strongest" counts power,
+        // not just nearness -- a blast across the square beats the lamp you are standing under.
+        // Two lights averaged puts the shadow between them, which is where a shadow never is.
+        var _sc = _at * _pw;
+        if (_sc > _bs) { _bs = _sc; _best = _at; _bp = _pw; _bx = _dgx; _by = _dgy; }
+    }
+    // Clamped at 2.5 because 0.4 x 2.5 is exactly opaque; past that the sprite just saturates
+    // and the light's remaining strength stops meaning anything.
+    var _pk = min(_bp, 3);
+    _r.a = min(2.5, 0.55 + _best * (0.7 + 0.6 * _pk));
+    if (_bs <= 0 || (_bx == 0 && _by == 0)) {
+        // Ambient patch: no light, so no direction to take and nothing to stretch along.
+        _r.a = 0.55; _r.dx = 0; _r.dy = 0; _r.ang = 0; _r.kx = 1; _r.ky = 1;
+        return _r;
+    }
+    // STRETCHED, not just enlarged. A figure's shadow is long and thin and points away from the
+    // lamp; scaling the oval up in both directions only ever gives a bigger puddle. The heading
+    // is taken in SCREEN space rather than the ground metric because the sprite is rotated on
+    // screen -- rotating by a ground angle would lay it off the axis it is drawn on.
+    var _h  = point_direction(0, 0, _bx, _by * 0.5);
+    var _gh = point_direction(0, 0, _bx, _by);           // along the ground, for the offset
+    _r.ang = _h;
+    // LONG, and no wider at all. A person's shadow is a long thin smear, not a disc: the width
+    // is what makes a stretched blob read as a puddle instead, and it is also pure extra
+    // alpha-blended fill on the one tier with none to spare. All the growth goes into length.
+    _r.kx  = 1 + 2.2 * _best * (0.6 + 0.25 * _pk);
+    _r.ky  = 1;
+    // ...and the throw follows FROM the length rather than being tuned against it. The centre
+    // slides out by half of what the shadow just gained, so the near end stays under the feet
+    // and every new pixel appears on the far side -- a shadow grows away from you, it does not
+    // grow evenly around you and end up half in front. Slightly under half, so it stays
+    // overlapping: a dark shape completely clear of its owner reads as a separate object.
+    var _len = 2 + (_r.kx - 1) * _chalf * 0.88;
+    _r.dx  = lengthdir_x(_len, _gh);
+    _r.dy  = lengthdir_y(_len, _gh) * 0.5;               // iso: ground travel halves on screen
+    return _r;
+}
+
 /// Stamp one character's silhouette for ONE light into that light's active surface.
 /// Shadows are kept per light so a pool can fade OTHER lights' shadows crossing it
 /// without erasing its own -- a character standing inside a pool blocks that pool's
@@ -1892,6 +1990,9 @@ function anim_draw(_rig, _clip, _play, _x, _y, _dir, _look, _is_player) {
     anim_paint(_p);
     anim_light_sheen(_p, _x, _y);
 }
+
+/// A knocked-down body is not drawn through here at all: it goes limp and is simulated
+/// per-limb instead. See scr_anim_doll.
 
 
 

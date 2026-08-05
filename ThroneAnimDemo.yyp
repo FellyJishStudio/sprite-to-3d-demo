@@ -17,6 +17,8 @@
   ],
   "ForcedPrefabProjectReferences":[],
   "IncludedFiles":[
+    {"$GMIncludedFile":"","%Name":"anim_die_back.bin","CopyToMask":-1,"filePath":"datafiles/baked_sequences","name":"anim_die_back.bin","resourceType":"GMIncludedFile","resourceVersion":"2.0",},
+    {"$GMIncludedFile":"","%Name":"anim_die.bin","CopyToMask":-1,"filePath":"datafiles/baked_sequences","name":"anim_die.bin","resourceType":"GMIncludedFile","resourceVersion":"2.0",},
     {"$GMIncludedFile":"","%Name":"anim_idle.bin","CopyToMask":-1,"filePath":"datafiles/baked_sequences","name":"anim_idle.bin","resourceType":"GMIncludedFile","resourceVersion":"2.0",},
     {"$GMIncludedFile":"","%Name":"anim_ride_run.bin","CopyToMask":-1,"filePath":"datafiles/baked_sequences","name":"anim_ride_run.bin","resourceType":"GMIncludedFile","resourceVersion":"2.0",},
     {"$GMIncludedFile":"","%Name":"anim_ride.bin","CopyToMask":-1,"filePath":"datafiles/baked_sequences","name":"anim_ride.bin","resourceType":"GMIncludedFile","resourceVersion":"2.0",},
@@ -45,6 +47,7 @@
     {"id":{"name":"obj_demo_skeleton","path":"objects/obj_demo_skeleton/obj_demo_skeleton.yy",},},
     {"id":{"name":"rm_demo","path":"rooms/rm_demo/rm_demo.yy",},},
     {"id":{"name":"scr_anim_depth","path":"scripts/scr_anim_depth/scr_anim_depth.yy",},},
+    {"id":{"name":"scr_anim_doll","path":"scripts/scr_anim_doll/scr_anim_doll.yy",},},
     {"id":{"name":"scr_anim_load","path":"scripts/scr_anim_load/scr_anim_load.yy",},},
     {"id":{"name":"scr_anim_pose","path":"scripts/scr_anim_pose/scr_anim_pose.yy",},},
     {"id":{"name":"scr_anim_render","path":"scripts/scr_anim_render/scr_anim_render.yy",},},

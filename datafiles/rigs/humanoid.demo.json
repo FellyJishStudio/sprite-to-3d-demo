@@ -103,7 +103,9 @@
     "run": "anim_run",
     "rideIdle": "anim_ride",
     "rideRun": "anim_ride_run",
-    "wave": "anim_wave"
+    "wave": "anim_wave",
+    "die": "anim_die",
+    "dieBack": "anim_die_back"
   },
   "role": {
     "armLeftUpper": "arm",

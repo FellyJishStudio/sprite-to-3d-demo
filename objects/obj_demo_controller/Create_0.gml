@@ -453,11 +453,37 @@ function demo_blob(_x, _y, _r, _sq, _col, _a) {
 ///
 /// HIGH is what the demo has always done. LOW is meant to hold sixty frames with a hundred
 /// characters and fun mode running, which means giving up most of the shadows: two lights
-/// casting for four characters is eight projections a frame against high's seventy.
+/// casting for four characters is eight projections a frame against high's seventy. EXTRA LOW
+/// is the phone tier and gives up cast shadows entirely -- see the case below.
 function demo_set_quality(_q) {
     global.demo_quality = _q;
     switch (_q) {
-        case 0:     // low
+        case 0:     // extra low -- the phone tier
+            // NO CAST SHADOWS AT ALL. Everything else here is a trim; this is the decision.
+            // The shadow pass is consistently the largest single block in the frame -- bigger
+            // than the ground pass and the front pass together -- and it is the one thing that
+            // can be removed outright rather than reduced, because the soft contact blob under
+            // each character is a separate system and stays. Every light still LIGHTS: the
+            // pools, the sheen and the particle lighting are untouched, so the scene keeps its
+            // colour and only loses the silhouettes stretching away from it.
+            global.q_shadow_lights  = 0;
+            global.q_shadow_casters = 0;
+            global.q_particle_lights = 2;
+            global.q_smoke   = 30;
+            global.q_rain    = 30;
+            global.q_shard   = 40;
+            global.q_star    = 6;
+            global.q_taps    = false;
+            global.q_charcull = true;
+            global.q_doll    = 1;
+            // ...and the contact blob stands in for them: see anim_blob_cheap.
+            global.q_blobshadow = true;
+            // One effect at a time, and a long gap. A phone has no headroom for the moments
+            // when three of them overlap, and those moments are what sets the floor.
+            global.q_burst   = 1;
+            global.q_gap     = 4;
+            break;
+        case 1:     // low
             global.q_shadow_lights  = 2;
             global.q_shadow_casters = 4;
             global.q_particle_lights = 3;
@@ -470,10 +496,12 @@ function demo_set_quality(_q) {
             // ...and fun mode throws fewer at once. The average was already over sixty; what
             // pulls the FLOOR down is the moments when a glacier shatters over a blast over a
             // fissure, and the only thing that helps there is fewer of them at a time.
+            global.q_doll    = 1;      // ragdoll constraint passes -- see anim_doll_step
+            global.q_blobshadow = false;
             global.q_burst   = 2;
             global.q_gap     = 3;
             break;
-        case 1:     // mid
+        case 2:     // mid
             global.q_shadow_lights  = 3;
             global.q_shadow_casters = 8;
             global.q_particle_lights = 5;
@@ -482,6 +510,8 @@ function demo_set_quality(_q) {
             global.q_shard   = 200;
             global.q_star    = 2;
             global.q_taps    = true;
+            global.q_doll    = 2;
+            global.q_blobshadow = false;
             global.q_charcull = true;
             global.q_burst   = 3;
             global.q_gap     = 2;
@@ -495,6 +525,8 @@ function demo_set_quality(_q) {
             global.q_shard   = 420;
             global.q_star    = 1;
             global.q_taps    = true;
+            global.q_doll    = 3;
+            global.q_blobshadow = false;
             global.q_charcull = false;   // fun mode still turns it on; see demo_view_cache
             global.q_burst   = 3;
             global.q_gap     = 2;
@@ -504,11 +536,14 @@ function demo_set_quality(_q) {
 /// The tier's name, for the button caption.
 function demo_quality_name() {
     switch (global.demo_quality) {
-        case 0:  return "low";
-        case 1:  return "mid";
+        case 0:  return "x-low";
+        case 1:  return "low";
+        case 2:  return "mid";
         default: return "high";
     }
 }
+/// How many tiers the HUD button cycles through.
+#macro DEMO_QUALITIES 4
 
 /// Open a batch, and reserve room in it. `demo_batch_room` flushes and reopens when the next
 /// item will not fit -- always on an item boundary, never mid-shape.
@@ -559,8 +594,9 @@ function demo_view_cache() {
     // The character box, published for their own Draw events. Generous upward, since a
     // character's sprite stands well above the ground point it is positioned by.
     // On below HIGH always; on HIGH only for fun mode, which keeps the benchmark honest.
+    // The HUD's `cull` button overrides all of it -- see global.cull_forced_off.
     global.cull_on = (global.demo_fun || global.q_charcull || prof_charcull)
-                     && !prof_funnocull;
+                     && !prof_funnocull && !global.cull_forced_off;
     global.cull_x0 = view_x0 - 60;
     global.cull_x1 = view_x1 + 60;
     global.cull_y0 = view_y0 - 110;
@@ -1050,7 +1086,8 @@ function demo_crack(_x, _y, _pal = undefined, _lcol = undefined, _scale = 1) {
     _L.pow   = 2.2;
     _L.pow0  = 2.2;
     global.demo_cracks[array_length(global.demo_cracks) - 1].light = _L;
-    demo_snow_clear(_x, _y, 280 * max(0.3, _scale));
+    
+    demo_hit(_x, _y, 190 * max(0.3, _scale));
 }
 
 /// The fissures. Drawn at the very BOTTOM of the ground pass -- before every light pool and
@@ -1749,7 +1786,12 @@ function demo_boom(_x, _y, _pal = undefined, _lcol = undefined) {
     });
     array_push(global.demo_booms,
         { x: _x, y: _y, t: 0, dur: 1.25, puff: _puff, spark: _spark, pal: _pal });
-    demo_snow_clear(_x, _y, 150);       // blown off the ground, once, not every frame
+    
+    // ...and everything standing in it goes down. Wide enough to cover the drawn fireball --
+    // a hitbox smaller than the flames reads as the explosion missing people it visibly
+    // engulfed -- and wider than the distance the flee AI holds at, or it can never catch
+    // anyone. See FLEE_NEAR.
+    demo_hit(_x, _y, 265);
     // Sitting ON the floor, and bright. Height is what sets shadow length, so a blast at
     // ground level throws the longest shadows there are -- which is why it raises `smax`:
     // the usual 1.6 ceiling would hold them to barely the caster's own height and leave
@@ -1765,6 +1807,126 @@ function demo_boom(_x, _y, _pal = undefined, _lcol = undefined) {
     _L.pow   = 3.2;                                // outshines the room; see demo_add_light
     _L.pow0  = 3.2;
     return _L;
+}
+
+/// AN ATTACK'S HITBOX. Everything within `_r` of (_x, _y) goes down.
+///
+/// An ISO ELLIPSE, not a circle: `_r` is a radius on the FLOOR, and the floor is drawn at
+/// 2:1, so a circular blast reaches half as far up and down the screen as it does across.
+/// Testing a screen-space circle would knock over skeletons standing well outside the fire
+/// and spare ones standing in it, which is exactly the kind of wrong that is hard to see and
+/// easy to feel.
+///
+/// The rider is deliberately exempt. It is the camera's subject and the thing every effect
+/// is aimed at; knocking it down would put the demo face-down in the grass most of the time.
+/// The ids are COLLECTED first and knocked down afterwards. demo_skeleton_down lives on this
+/// controller, and inside a `with` the name would be looked up on the skeleton instead --
+/// the same trap as demo_snow_clear and the laser depth test.
+function demo_hit(_x, _y, _r) {
+    if (global.demo_nohit) return 0;
+    var _r2 = _r * _r;
+    var _list = [];
+    with (obj_demo_skeleton) {
+        // A body already down is NOT skipped. A second blast under one that is lying there
+        // -- or still in the air from the first -- punts it again, which is what makes a
+        // sustained bombardment read as bodies being thrown around rather than as a pile
+        // that stops reacting the moment it forms.
+        var _dx = x - _x, _dy = (y - _y) * 2;      // iso ground metric
+        if (_dx * _dx + _dy * _dy > _r2) continue;
+        array_push(_list, id);
+    }
+    for (var i = 0; i < array_length(_list); i++) demo_skeleton_down(_list[i], _x, _y, _r);
+    return array_length(_list);
+}
+
+/// Knock one skeleton down, away from (_fx, _fy). Reached through the controller so the
+/// knockdown reads the same however it was caused.
+function demo_skeleton_down(_s, _fx, _fy, _r) {
+    with (_s) {
+        // STRENGTH FALLS OFF WITH DISTANCE. One at the edge of the blast is knocked over;
+        // one standing on it is thrown. Without this every body in reach leaves at the same
+        // speed, which reads as a chorus line rather than an explosion.
+        var _dx = x - _fx, _dy = (y - _fy) * 2;                  // iso ground metric
+        var _d  = max(1, sqrt(_dx * _dx + _dy * _dy));
+        // Cubed, so the near field dominates hard: at the rim `_k` is barely above its
+        // floor, at the core it is everything. Squared was too gentle to read -- the whole
+        // crowd left at roughly one speed and the blast had no centre.
+        var _k  = clamp(1 - _d / max(1, _r), 0, 1);
+        _k = 0.08 + 0.92 * _k * _k * _k;
+
+        // RE-HIT keeps the pose it already has. A body on the floor caught by a second blast
+        // is thrown again, but it does not stand up mid-air to fall over a second time --
+        // `down_p` stays where it is, so only the physics restarts.
+        var _again = (down_t > 0 || rising || hit_z > 0);
+        down_t = 2.6 + random(1.8);        // seconds face-down before it starts getting up
+        if (!_again) down_p = 0;           // 0 -> 1 through the fall, held, then back to 0
+        rising = false;
+        speed  = 0;
+        flee   = false;
+
+        // Launched along the ray out of the blast, with the direction jittered a little so a
+        // ring of them does not fan out in a perfect star.
+        var _a = point_direction(_fx, _fy, x, y) + random_range(-18, 18);
+        var _v = (50 + 430 * _k) * (0.75 + random(0.5));
+        hit_vx   = lengthdir_x(_v, _a);
+        hit_vy   = lengthdir_y(_v, _a);
+        // THROWN UP, not just outward. A blast underfoot lifts you; one at the far edge of
+        // its reach only knocks you over. The vertical share is deliberately larger than the
+        // horizontal near the core, which is what turns a shove into being blown off your
+        // feet -- and the arc is what lets you read the distance it travelled.
+        hit_vz   = (55 + 430 * _k) * (0.75 + random(0.5));
+        hit_z    = 0;
+        // Which way it turns is a coin toss -- an explosion has no preferred handedness --
+        // and how fast follows how hard it was hit.
+        var _way = (random(1) < 0.5) ? -1 : 1;
+        // The FACING drifts a little; the body TUMBLES a lot. Two different things: the
+        // first is which way it is pointed, the second is it going over and over. A hard hit
+        // near the core turns the body two or three full times before it lands.
+        hit_spin  = _way * (40 + 220 * _k) * (0.6 + random(0.8));
+        hit_rollv = (110 + 620 * _k) * (0.7 + random(0.6));
+
+        // WHICH WAY IT GOES OVER. The facing is left alone -- a body does not pirouette to
+        // meet the blast -- and the SOMERSAULT is chosen instead: blown from in front, it
+        // goes over backwards; blown from behind, it pitches forward.
+        var _rel = angle_difference(point_direction(x, y, _fx, _fy), direction);
+        down_back = (abs(_rel) < 90);      // the blast is in front of it
+
+        // AND THE BODY GOES LIMP. Everything above decides where it is thrown; from here the
+        // limbs are simulated, seeded from the pose it is standing in at this instant -- so
+        // one caught mid-stride falls mid-stride, arms where the run had them.
+        //
+        if (global.demo_quality == 0 && global.demo_dolls != undefined) {
+            // PHONE TIER: no solver. Pick one of the baked knockdowns instead -- see
+            // anim_doll_bake. The library is built when the tier is selected, never here: it is
+            // a few hundred solver steps, and paying for them on the first explosion of a fight
+            // dropped a frame to six figures-per-second exactly when the screen was busiest.
+            //
+            // A re-hit picks a fresh one, which is the only variety a canned body can have --
+            // and the arms are drawn independently of the body, so the six baked falls are seen
+            // in far more than six combinations.
+            doll = anim_doll_canned(global.demo_dolls,
+                                    irandom(2) + (down_back ? 0 : 3),
+                                    irandom(array_length(global.demo_dolls.arm) - 1));
+        } else {
+            // A re-hit keeps the ragdoll it already has and simply gets kicked again: a body
+            // on the floor does not reassemble itself in order to be blown up a second time.
+            if (!_again || doll == undefined || doll[$ "flr"] != undefined) {
+                doll = anim_doll_make(rig, clip, play, x, y, direction, look);
+            }
+            // The tumble axis lies across the direction of travel, so it goes over its own
+            // head rather than pirouetting. Radians here: `hit_rollv` is degrees, and the
+            // ragdoll works in w x r, which does not.
+            //
+            // BLAST IN FRONT -> OVER BACKWARDS. `+1` makes the feet lead and the upper body
+            // trail, which is being blown off your feet; `-1` pitches you head-first the way
+            // you are flying, which is what it should look like when the push came from behind.
+            //
+            // The jitter on the axis is deliberately SMALL. At the 0.45 it started out with,
+            // the random part was most of a unit vector and swamped the axis it was perturbing
+            // -- every body tumbled in an arbitrary direction and neither case read at all.
+            anim_doll_kick(doll, _a, degtorad(hit_rollv), down_back ? 1 : -1, 0.16);
+        }
+    }
 }
 
 /// Midpoint displacement: start from the two endpoints and repeatedly split every segment,
@@ -1945,7 +2107,8 @@ function demo_bolt(_x, _y) {
         flash: [0, 0.06 + random(0.03), 0.15 + random(0.06)],
         light: _L
     });
-    demo_snow_clear(_x, _y, 120);
+    
+    demo_hit(_x, _y, 120);
 }
 
 /// How long a strike lasts, strokes and afterglow together. The strokes are over in the
@@ -1966,7 +2129,7 @@ function demo_bolt(_x, _y) {
 depth       = 20000;          // the ground grid draws behind every character
 // Numeric second element = spawner action; a string names one of the toggles below.
 buttons     = [["+10", 10], ["+50", 50], ["-10", -10], ["reset", 0], ["wave", "wave"],
-               ["fun", "fun"], ["fx", "perf"]];
+               ["fun", "fun"], ["fx", "perf"], ["cull", "cull"]];
 global.demo_fun = false;      // see demo_fun_toggle
 // OFF-CAMERA CULLING FOR THE CHARACTERS THEMSELVES, and it is off by default on purpose.
 //
@@ -1978,6 +2141,13 @@ global.demo_fun = false;      // see demo_fun_toggle
 // Draw events to test against. Everything else in the demo still pays full cost.
 global.cull_on = false;
 global.cull_x0 = 0; global.cull_y0 = 0; global.cull_x1 = 0; global.cull_y1 = 0;
+/// ...and a HUD override, because the question a phone build has to answer is "how many VISIBLE
+/// characters can it draw". Fun mode's cull answers a different one: with the crowd scattered it
+/// reports a hundred alive and none of them drawn, so adding skeletons there buys Step cost and
+/// almost no draw cost, and the ceiling it suggests is not the ceiling wave design needs.
+/// `forced` pins the cull off whatever fun mode wants; `off` is what the character Draw events
+/// and the doll step actually read. The env-var harnesses cannot reach a phone -- this can.
+global.cull_forced_off = false;
 fun_t           = 0;          // seconds until the next volley
 menu_open   = false;
 menu_x      = 0;
@@ -2082,6 +2252,20 @@ function demo_kill(_n) {
 // the event runs, in order -- they are not hoisted -- so calling this from the top of Create
 // found nothing there and took the whole boot down with it.
 demo_make_blob_sprite();      // every soft blob in the demo draws from this one texture
-demo_set_quality(2);          // high: the demo as it behaved before the tiers existed
+demo_set_quality(3);          // high: the demo as it behaved before the tiers existed
+
+/// THRONE_NODOLL=1 freezes every ragdoll in the shape it was hit in, leaving the rest of the
+/// frame identical -- the A/B that prices the solver on its own rather than guessing which half
+/// of a frame-rate drop belongs to it.
+global.demo_nodoll = (environment_get_variable("THRONE_NODOLL") == "1");
+
+/// THRONE_NOHIT=1 stops attacks knocking anybody down at all, which is how the demo behaved
+/// before any of this existed. The three together separate "the solver costs X" from "having
+/// bodies on the floor costs Y" from "the demo was always this fast".
+global.demo_nohit = (environment_get_variable("THRONE_NOHIT") == "1");
+
+/// The baked knockdown library, built on the first hit taken at the phone tier and kept for the
+/// rest of the session. See anim_doll_bake.
+global.demo_dolls = undefined;
 
 
