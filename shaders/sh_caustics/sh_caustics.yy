@@ -1,0 +1,12 @@
+{
+  "$GMShader":"",
+  "%Name":"sh_caustics",
+  "name":"sh_caustics",
+  "parent":{
+    "name":"Scripts",
+    "path":"folders/Scripts.yy",
+  },
+  "resourceType":"GMShader",
+  "resourceVersion":"2.0",
+  "type":1,
+}

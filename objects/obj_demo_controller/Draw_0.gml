@@ -24,34 +24,65 @@ while (_c <= _y1 + _x1 * 0.5) {
     _c += GRID_TILE;
 }
 
+// Fissures go down FIRST, straight onto the bare grid. They are in the floor, and every
+// other effect in the demo is above them -- pools, caustics, laser beams, the characters
+// themselves, smoke. Rain ripples land on top of them for the same reason.
+var _pt = get_timer();
+demo_view_cache();       // the rect every cull below tests against; see demo_on_screen
+demo_light_cache();      // once a frame, for everything that samples the lighting per particle
+demo_snow_paint();       // the covering goes down before the cracks that scorch it away
+gpu_set_blendmode(bm_add);
+demo_shards_paint(false);   // ice that has come to rest lies ON the floor, with the snow
+gpu_set_blendmode(bm_normal);
+demo_cracks_paint();
+demo_rain_paint();
+
+if (prof_on) { prof_ground = lerp(prof_ground, get_timer() - _pt, 0.08); _pt = get_timer(); }
+
 // Light pools: a 2:1 ellipse per light -- a circle of reach on the 1:2 isometric ground.
 // Additive blending with a centre-to-black gradient is a free radial falloff: black adds
 // nothing, so there is no visible rim. The bright dot is the lamp itself.
 gpu_set_blendmode(bm_add);
 for (var i = 0; i < array_length(global.demo_lights); i++) {
     var _L = global.demo_lights[i];
+    // Nothing to draw for a lamp whose entire reach is off screen -- and that includes its
+    // floor pattern, which for the water projector is a full-screen-quad shader pass.
+    if (!demo_on_screen(_L.x, _L.y, _L.r)) continue;
     // Height spreads the pool and thins it: the same light falling on more floor. Squared
     // because it is spread over an area, which is also what keeps a low lamp reading as
     // bright and tight rather than merely smaller.
     var _hf = _L.h / LIGHT_H_MID;
     var _w  = _L.r * 0.5 * (0.55 + 0.45 * _hf);
     var _k  = clamp(1 / (_hf * _hf), 0.18, 1.6);
-    draw_ellipse_colour(_L.x - _w, _L.y - _w * 0.5, _L.x + _w, _L.y + _w * 0.5,
-                        demo_col_scale(_L.col, _k), c_black, false);
+    if (_L.pool) {
+        draw_ellipse_colour(_L.x - _w, _L.y - _w * 0.5, _L.x + _w, _L.y + _w * 0.5,
+                            demo_col_scale(_L.col, _k), c_black, false);
+    }
     // An effect lamp's pattern goes on the floor, in this same additive pass, before the
     // fixture -- so the stem and bulb sit on top of what they are throwing.
     if (_L.fx != "") demo_fx_paint(_L);
     // The lamp itself is drawn UP at its height -- height is straight screen-y, the one
     // axis the isometric projection does not halve -- with a stem down to the ground point
-    // its pool and its shadows are actually measured from.
-    var _ly = _L.y - _L.h;
-    draw_line_colour(_L.x, _L.y, _L.x, _ly, make_colour_rgb(30, 26, 12),
-                                            make_colour_rgb(90, 80, 40));
-    draw_circle_colour(_L.x, _L.y - 2, 3, make_colour_rgb(40, 36, 18), c_black, false);
-    draw_circle_colour(_L.x, _ly, 4, (_L.fx == "") ? make_colour_rgb(255, 236, 170)
-                                                   : demo_col_boost(_L.col), c_black, false);
+    // its pool and its shadows are actually measured from. A blast or a lightning strike
+    // has no fixture: it IS the light, and drawing a lamp on a stem inside a fireball is
+    // the sort of thing that only becomes obvious once it is on screen.
+    if (_L.glyph) {
+        var _ly = _L.y - _L.h;
+        draw_line_colour(_L.x, _L.y, _L.x, _ly, make_colour_rgb(30, 26, 12),
+                                                make_colour_rgb(90, 80, 40));
+        draw_circle_colour(_L.x, _L.y - 2, 3, make_colour_rgb(40, 36, 18), c_black, false);
+        draw_circle_colour(_L.x, _ly, 4, _L.tint ? demo_col_boost(_L.col)
+                                                 : make_colour_rgb(255, 236, 170),
+                           c_black, false);
+    }
 }
+// Bonfires that someone is standing in FRONT of belong under the characters -- but ON TOP
+// of the light pools, which is why this sits at the end of the additive pass rather than
+// with the other ground work above it. Drawn before the pools, a fire was painted over by
+// its OWN pool: the flames vanished and left a bright ellipse sitting on the grass.
+demo_fires_paint(false);
 gpu_set_blendmode(bm_normal);
+if (prof_on) { prof_pools = lerp(prof_pools, get_timer() - _pt, 0.08); _pt = get_timer(); }
 
 // Cast-shadow layer: every character's silhouettes composited into ONE surface, then
 // subtracted from the scene once. The surface is what makes each shadow UNIFORM -- parts
@@ -63,11 +94,48 @@ if (global.anim_ready) {
     var _nl = array_length(global.demo_lights);
     var _sw = round(camera_get_view_width(_cam)), _sh = round(camera_get_view_height(_cam));
     if (!surface_exists(caster_surf)) caster_surf = surface_create(caster_size, caster_size);
+    // CULL FIRST. This is the most expensive thing in the demo by a wide margin -- a surface
+    // plus a silhouette pass per caster, PER LIGHT -- and in fun mode most lamps are on the
+    // far side of the map. A light whose whole reach misses the view can put nothing on
+    // screen, so it is skipped here and skipped again in the composite below.
+    //
+    // ...and then only the STRONGEST FEW of what survives actually casts. This is the whole
+    // cost of the demo: a surface plus a silhouette pass per caster per light. Fun mode runs
+    // sixteen lights, which is eighty silhouette passes a frame, and it does not look four
+    // times better than five would -- a dim lamp's shadow lying under four brighter ones is
+    // not visible in the first place. The pools, the sheen and the particle lighting are
+    // unaffected; every light still lights. Only casting is rationed.
+    var _act = array_create(_nl, false);
+    var _sco = array_create(_nl, -1);
+    var _cx  = (view_x0 + view_x1) * 0.5, _cy = (view_y0 + view_y1) * 0.5;
     for (var l = 0; l < _nl; l++) {
+        var _LC = global.demo_lights[l];
+        if (!demo_on_screen(_LC.x, _LC.y, _LC.r)) continue;
+        // Bright and near beats dim and far. Distance is measured in the iso ground metric,
+        // the same one the shadows themselves are cast in.
+        var _dx = _LC.x - _cx, _dy = (_LC.y - _cy) * 2;
+        _sco[l] = (_LC[$ "pow"] ?? 1) * _LC.r / max(120, sqrt(_dx * _dx + _dy * _dy));
+    }
+    repeat (min(SHADOW_LIGHTS_MAX, _nl)) {
+        var _best = -1, _bs = 0;
+        for (var l = 0; l < _nl; l++) {
+            if (_sco[l] > _bs) { _bs = _sco[l]; _best = l; }
+        }
+        if (_best < 0) break;
+        _act[_best] = true;
+        _sco[_best] = -1;
+    }
+    // Grow the surface list to match, EXPLICITLY, before anything is skipped. Filling it
+    // lazily inside the loop broke as soon as culling was added: skipping light 0 and
+    // touching light 1 makes GML widen the array to reach index 1, and it fills the hole it
+    // just made with 0 -- not -1. Surface id 0 is the APPLICATION SURFACE, so the trim below
+    // saw a live surface at a dead index and tried to free the screen out from under itself.
+    while (array_length(shadow_surfs) < _nl) array_push(shadow_surfs, -1);
+    for (var l = 0; l < _nl; l++) {
+        if (!_act[l]) continue;
         // One surface per light, so each pool can fade OTHER lights' shadows crossing it
         // without touching its own -- a character inside a pool blocks that pool's light,
         // and its shadow there must stay strong, anchored at the stable object origin.
-        if (l >= array_length(shadow_surfs)) shadow_surfs[l] = -1;
         if (!surface_exists(shadow_surfs[l]) || surface_get_width(shadow_surfs[l]) != _sw
                                              || surface_get_height(shadow_surfs[l]) != _sh) {
             if (surface_exists(shadow_surfs[l])) surface_free(shadow_surfs[l]);
@@ -106,11 +174,21 @@ if (global.anim_ready) {
         // ANIM_SHADOW_WASH scales the whole wash. At 1, two equally-lit overlapping pools
         // erase each other's shadows completely at the midpoint; physically about half the
         // darkness should survive there, so the wash runs below full strength.
+        //
+        // STRONGER LIGHT, STRONGER SHADOW. The wash is scaled by how bright the other lamp
+        // is RELATIVE to this one (`pow`, see demo_add_light), so a blast or a strike drives
+        // its shadows straight through the room's lamps while erasing theirs. Without the
+        // ratio the comparison was absolute, and a dim lamp on the far side of the room
+        // cancelled a lightning strike's shadow exactly as effectively as the strike
+        // cancelled the lamp's -- which is backwards, and it is what made the loudest
+        // lights in the demo the ones that moved the fewest shadows.
         gpu_set_blendmode(bm_subtract);
+        var _pw = max(0.01, _L[$ "pow"] ?? 1);
         for (var j = 0; j < _nl; j++) {
-            if (j == l) continue;
+            if (j == l || !_act[j]) continue;     // a lamp off screen washes nothing on it
             var _L2 = global.demo_lights[j];
-            var _c0 = 255 * (1 - _L2.h / _L2.r) * ANIM_SHADOW_WASH;
+            var _c0 = min(255, 255 * (1 - _L2.h / _L2.r) * ANIM_SHADOW_WASH
+                               * ((_L2[$ "pow"] ?? 1) / _pw));
             if (_c0 <= 0) continue;
             var _fw = sqrt(max(0, _L2.r * _L2.r - _L2.h * _L2.h));
             draw_ellipse_colour(_L2.x - _fw, _L2.y - _fw * 0.5,
@@ -119,6 +197,17 @@ if (global.anim_ready) {
         }
         gpu_set_blendmode(bm_normal);
         surface_reset_target();
+    }
+    // Give back the surfaces of lights that have gone. With no ceiling on the light count
+    // these are transient -- every blast and every strike brings one and takes it away
+    // again -- and a surface per light ever created, kept forever, is a leak the old cap
+    // was quietly preventing.
+    for (var l = array_length(shadow_surfs) - 1; l >= _nl; l--) {
+        var _old = shadow_surfs[l];
+        // `> 0` and not merely `surface_exists`: id 0 is the application surface and must
+        // never be freed here whatever ends up in this slot.
+        if (_old > 0 && surface_exists(_old)) surface_free(_old);
+        array_delete(shadow_surfs, l, 1);
     }
     // Composite each light's shadows as one full-strength CENTER tap plus four 1px
     // diagonal offsets at low strength: the offsets soften every outline (no rectangle
@@ -130,6 +219,7 @@ if (global.anim_ready) {
     var _scC = make_colour_rgb(112, 112, 112);
     var _scO = make_colour_rgb(8, 8, 8);
     for (var l = 0; l < _nl; l++) {
+        if (!_act[l]) continue;      // its surface holds last frame's stamps; do not use it
         if (l >= array_length(shadow_surfs) || !surface_exists(shadow_surfs[l])) continue;
         draw_surface_ext(shadow_surfs[l], _x0,     _y0,     1, 1, 0, _scC, 1);
         draw_surface_ext(shadow_surfs[l], _x0 - 1, _y0 - 1, 1, 1, 0, _scO, 1);
@@ -139,6 +229,7 @@ if (global.anim_ready) {
     }
     gpu_set_blendmode(bm_normal);
 }
+if (prof_on) prof_shadow = lerp(prof_shadow, get_timer() - _pt, 0.08);
 
 // F3: the cast's own geometry, drawn over the finished shadows.
 //

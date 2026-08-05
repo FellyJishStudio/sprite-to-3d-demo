@@ -499,9 +499,17 @@ function anim_light_shadow(_L, _gx, _gy) {
         uy   : _dgy / _gd,
         // Height is the whole of shadow length: the lower the lamp, the further a given
         // caster throws. Capped, or a lamp near the floor would ask for an endless one.
-        s    : min(_gd / _L.h, 1.6),
-        // Brightness stamped into the shadow surface: full at the light, 0 at its edge.
-        a255 : round(255 * (1 - _d3 / _L.r))
+        // A light may raise its OWN ceiling (`smax`) -- an explosion sitting on the floor
+        // is the runaway case and wants the long raking shadows it implies, where at 1.6
+        // they stayed shorter than the fireball and were never seen. Read through the
+        // accessor: the projection tests build bare light structs with no such field.
+        s    : min(_gd / _L.h, _L[$ "smax"] ?? 1.6),
+        // Brightness stamped into the shadow surface: full at the light, 0 at its edge,
+        // times how bright the light is. A stronger light casts a HARDER shadow, and it
+        // holds that hardness much further out -- a blast at `pow` 3 is still stamping
+        // solid black two thirds of the way to its edge, where a lamp has faded to grey.
+        // Clamped, since this is a colour channel.
+        a255 : round(min(255, 255 * (1 - _d3 / _L.r) * (_L[$ "pow"] ?? 1)))
     };
 }
 
@@ -1717,15 +1725,16 @@ function anim_light_sheen(_parts, _gx, _gy) {
         var _ox = -_dgx / _gd * 1.5;
         var _oy = -_dgy * 0.5 / _gd * 1.5;
         // What the lamp actually throws. Ordinary lamps keep the fixed warm they have always
-        // used; an EFFECT lamp puts its own colour on whoever is standing in it, which is the
-        // difference between a disco ball and a violet circle on the floor. Its pool tint is
-        // dim by design (it is added to the floor), so it is taken up to full brightness here
-        // -- `_a` above is what keeps this a kiss of light rather than a paint job.
+        // used; a TINTED light puts its own colour on whoever is standing in it, which is
+        // the difference between a disco ball and a violet circle on the floor, and between
+        // a fireball and an orange patch of grass. Its pool tint is dim by design (it is
+        // added to the floor), so it is taken up to full brightness here -- `_a` above is
+        // what keeps this a kiss of light rather than a paint job.
         //
         // Read through the accessor: the projection tests build bare light structs with no
         // tint at all, and this runs for every character in range of every light.
         var _tint = make_colour_rgb(226, 208, 168);
-        if ((_L[$ "fx"] ?? "") != "") {
+        if (_L[$ "tint"] ?? false) {
             var _tc = _L.col;
             var _m  = max(colour_get_red(_tc), colour_get_green(_tc), colour_get_blue(_tc));
             if (_m > 1) _tint = make_colour_rgb(colour_get_red(_tc)   * 255 / _m,
