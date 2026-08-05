@@ -131,6 +131,15 @@ if (global.anim_ready) {
     // just made with 0 -- not -1. Surface id 0 is the APPLICATION SURFACE, so the trim below
     // saw a live surface at a dead index and tried to free the screen out from under itself.
     while (array_length(shadow_surfs) < _nl) array_push(shadow_surfs, -1);
+    // CASTER-OUTER, LIGHT-INNER. This is the whole point of the restructure: a caster's
+    // silhouette card depends on its pose and nothing else, so it is rendered ONCE here and
+    // projected into every light's surface. Light-outer meant repainting every bone of every
+    // character once per light -- five casters against five lights was twenty-five identical
+    // character renders a frame to produce five distinct images.
+    //
+    // So the surfaces are created and cleared first, in their own sweep, because stamping
+    // now visits them in a different order and none of them may be cleared after something
+    // has been stamped into it.
     for (var l = 0; l < _nl; l++) {
         if (!_act[l]) continue;
         // One surface per light, so each pool can fade OTHER lights' shadows crossing it
@@ -141,19 +150,48 @@ if (global.anim_ready) {
             if (surface_exists(shadow_surfs[l])) surface_free(shadow_surfs[l]);
             shadow_surfs[l] = surface_create(_sw, _sh);
         }
-        var _dst = shadow_surfs[l], _cs = caster_surf, _cc = caster_cam;
-        surface_set_target(_dst);
+        surface_set_target(shadow_surfs[l]);
         draw_clear_alpha(c_black, 0);
-        camera_apply(_cam);    // world coordinates land on the surface as they do on screen
-        var _L = global.demo_lights[l];
-        var _pw = instance_find(obj_demo_player, 0);
-        if (_pw != noone && _pw.mount == noone) {
-            anim_shadow_char(_L, _pw.rig, _pw.clip, _pw.play, _pw.x, _pw.y,
-                             _pw.direction, _pw.look, true, _dst, _cam, _cs, _cc);
+        surface_reset_target();
+    }
+
+    // Every caster that can cast this frame, each preparing its card and then projecting it
+    // into each light in turn. The parts list is shared scratch, so a caster's casts must
+    // all happen before the next one prepares -- which is what this loop does.
+    var _cs = caster_surf, _cc = caster_cam;
+    var _casters = [];
+    var _pw = instance_find(obj_demo_player, 0);
+    if (_pw != noone && _pw.mount == noone) array_push(_casters, _pw);
+    with (obj_demo_skeleton) array_push(_casters, id);
+    with (obj_demo_horse)    array_push(_casters, id);
+    for (var c = 0; c < array_length(_casters); c++) {
+        var _C2 = _casters[c];
+        var _pr;
+        if (object_is_ancestor(_C2.object_index, obj_demo_horse)
+            || _C2.object_index == obj_demo_horse) {
+            _pr = anim_shadow_prep_pair(_C2, _cs, _cc);
+        } else {
+            _pr = anim_shadow_prep_char(_C2.rig, _C2.clip, _C2.play, _C2.x, _C2.y,
+                                        _C2.direction, _C2.look,
+                                        _C2.object_index == obj_demo_player, _cs, _cc);
         }
-        with (obj_demo_skeleton) anim_shadow_char(_L, rig, clip, play, x, y, direction,
-                                                   look, false, _dst, _cam, _cs, _cc);
-        with (obj_demo_horse)    anim_shadow_pair(_L, self, _dst, _cam, _cs, _cc);
+        if (_pr == undefined) continue;
+        for (var l = 0; l < _nl; l++) {
+            if (!_act[l]) continue;
+            surface_set_target(shadow_surfs[l]);
+            camera_apply(_cam);   // world coordinates land on the surface as they do on screen
+            anim_shadow_cast(global.demo_lights[l], _pr, _cs);
+            surface_reset_target();
+        }
+    }
+
+    // The wash is per light and must come AFTER every caster has stamped into that light's
+    // surface, so it gets its own sweep too.
+    for (var l = 0; l < _nl; l++) {
+        if (!_act[l]) continue;
+        surface_set_target(shadow_surfs[l]);
+        camera_apply(_cam);
+        var _L = global.demo_lights[l];
         // LIGHT WASHES SHADOW: every OTHER lamp's illumination is subtracted from this
         // lamp's shadows, per pixel, using the SAME falloff the stamps themselves carry --
         // a shadow is only dark where no other light reaches, so where pools overlap it

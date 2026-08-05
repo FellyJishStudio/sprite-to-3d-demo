@@ -1497,21 +1497,37 @@ function anim_shadow_orbit_test() {
 /// this cannot go through draw_surface_ext or one world matrix. It is a textured triangle
 /// strip: stations across the card, two vertices each, adjacent quads SHARING their
 /// vertices so the fan cannot open seams -- which is what killed the earlier stamp fan.
-function anim_shadow_paint(_parts, _s, _g, _ax, _ay, _dst, _main_cam, _cast_surf, _cast_cam) {
-    if (!surface_exists(_dst) || !surface_exists(_cast_surf)) return;
-    // A 256px card leaves 240px above the stable origin and 16px below it.
+/// Render one caster's silhouette CARD: its exact assembled palette on a 256px quad anchored
+/// at its stable origin, with the contact blob left out.
+///
+/// Split out from the projection because it depends only on the POSE -- never on the light.
+/// It used to run inside anim_shadow_paint, which meant a caster repainted every one of its
+/// bones once per light: five lights and five characters was twenty-five full character
+/// renders and fifty surface switches a frame, to produce five distinct images. Now the
+/// controller renders it once per caster and projects that one card into every light.
+///
+/// Sets and clears its own target, and expects none to be active when it is called.
+function anim_shadow_card(_parts, _ax, _ay, _cast_surf, _cast_cam) {
+    if (!surface_exists(_cast_surf)) return false;
     var _size = ANIM_SHADOW_CARD;
-    var _lx = ANIM_SHADOW_CARD_LX, _ly = ANIM_SHADOW_CARD_LY;
-    camera_set_view_pos(_cast_cam, _ax - _lx, _ay - _ly);
+    camera_set_view_pos(_cast_cam, _ax - ANIM_SHADOW_CARD_LX, _ay - ANIM_SHADOW_CARD_LY);
     camera_set_view_size(_cast_cam, _size, _size);
-    surface_reset_target();
     surface_set_target(_cast_surf);
     draw_clear_alpha(c_black, 0);
     camera_apply(_cast_cam);
     anim_paint(_parts, true);                          // exact palette, without contact blob
     surface_reset_target();
-    surface_set_target(_dst);
-    camera_apply(_main_cam);
+    return true;
+}
+
+/// Project an ALREADY-RENDERED card (see anim_shadow_card) into one light's shadow surface.
+/// The caller owns the target: it must already be set to `_dst` with the main camera
+/// applied, which is what lets one card be projected into several surfaces in a row.
+function anim_shadow_paint(_s, _g, _ax, _ay, _cast_surf) {
+    if (!surface_exists(_cast_surf)) return;
+    // A 256px card leaves 240px above the stable origin and 16px below it.
+    var _size = ANIM_SHADOW_CARD;
+    var _lx = ANIM_SHADOW_CARD_LX, _ly = ANIM_SHADOW_CARD_LY;
     var _grey = make_colour_rgb(_s.a255, _s.a255, _s.a255);
 
     // The sprite lies down on the floor, once. Card-x maps straight through to screen x,
@@ -1793,21 +1809,54 @@ function anim_shadow_char(_L, _rig, _clip, _play, _x, _y, _dir, _look, _is_playe
                           _dst, _main_cam, _cast_surf, _cast_cam) {
     var _s = anim_light_shadow(_L, _x, _y);
     if (_s == undefined) return;
+    var _pr = anim_shadow_prep_char(_rig, _clip, _play, _x, _y, _dir, _look, _is_player,
+                                    _cast_surf, _cast_cam);
+    if (_pr == undefined) return;
+    surface_set_target(_dst);
+    camera_apply(_main_cam);
+    anim_shadow_cast(_L, _pr, _cast_surf);
+    surface_reset_target();
+}
+
+/// Build a character's parts and render its card, ONCE, ready to be projected into as many
+/// lights as want it. Returns what anim_shadow_cast needs, or undefined if it cannot cast.
+///
+/// The parts list is anim_scratch's shared array, so this must be followed by its casts
+/// before another caster prepares -- which is exactly the order the controller works in.
+function anim_shadow_prep_char(_rig, _clip, _play, _x, _y, _dir, _look, _is_player,
+                               _cast_surf, _cast_cam) {
     // The DRAWN facing: the shadow is the character you are looking at, laid down.
     var _g = anim_shadow_ground(_rig, _dir, _is_player);
     var _p = anim_build(anim_scratch(), _rig, _clip, _play, _x, _y, _dir, _look, _is_player);
+    if (!anim_shadow_card(_p, _x, _y, _cast_surf, _cast_cam)) return undefined;
     // Humanoids and skeletons carry no width floor: the minimum is the horse's property
     // (see anim_shadow_paint), and a dismounted player's shadow is left exactly as drawn.
-    global.anim_shadow_cast_minw = 0;
-    anim_shadow_paint(_p, _s, _g, _x, _y, _dst, _main_cam, _cast_surf, _cast_cam);
+    return { g: _g, x: _x, y: _y, minw: 0 };
+}
+
+/// Project a prepared caster into whichever surface is currently the target.
+function anim_shadow_cast(_L, _pr, _cast_surf) {
+    var _s = anim_light_shadow(_L, _pr.x, _pr.y);
+    if (_s == undefined) return;
+    global.anim_shadow_cast_minw = _pr.minw;
+    anim_shadow_paint(_s, _pr.g, _pr.x, _pr.y, _cast_surf);
 }
 
 /// The mount-and-rider version uses one assembled palette and the mount's stable object
 /// origin. A gallop can lift every hoof without making the projected card jitter between
 /// whichever animated leg happens to be lowest that frame.
 function anim_shadow_pair(_L, _h, _dst, _main_cam, _cast_surf, _cast_cam) {
-    var _s = anim_light_shadow(_L, _h.x, _h.y);
-    if (_s == undefined) return;
+    var _pr = anim_shadow_prep_pair(_h, _cast_surf, _cast_cam);
+    if (_pr == undefined) return;
+    surface_set_target(_dst);
+    camera_apply(_main_cam);
+    anim_shadow_cast(_L, _pr, _cast_surf);
+    surface_reset_target();
+}
+
+/// The prepare half of the pair, for the same reason as anim_shadow_prep_char: one card,
+/// projected into every light, instead of one per light.
+function anim_shadow_prep_pair(_h, _cast_surf, _cast_cam) {
     // Drawn facings throughout, so the pair's shadow is the pair you are looking at.
     var _g = anim_shadow_ground(_h.rig, _h.direction, false);
     var _p = anim_scratch();
@@ -1817,11 +1866,11 @@ function anim_shadow_pair(_L, _h, _dst, _main_cam, _cast_surf, _cast_cam) {
                    anim_mount_state(_h.rig, _h.direction));
     }
     anim_build(_p, _h.rig, _h.clip, _h.play, _h.x, _h.y, _h.direction, _h.look, false);
+    if (!anim_shadow_card(_p, _h.x, _h.y, _cast_surf, _cast_cam)) return undefined;
     // The width floor rides on the HORSE INSTANCE -- `shadow_minw`, set in its Create --
     // so it applies to the horse and to horse-plus-rider, is absent for everyone else,
     // and can differ per horse if one ever needs it to.
-    global.anim_shadow_cast_minw = _h[$ "shadow_minw"] ?? 0;
-    anim_shadow_paint(_p, _s, _g, _h.x, _h.y, _dst, _main_cam, _cast_surf, _cast_cam);
+    return { g: _g, x: _h.x, y: _h.y, minw: _h[$ "shadow_minw"] ?? 0 };
 }
 
 /// The shared parts list, emptied and handed out. One character (or one mount + rider
